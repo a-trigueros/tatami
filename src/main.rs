@@ -1,5 +1,4 @@
-mod config;
-mod paths;
+use tatami::{config, paths};
 
 use clap::{Parser, Subcommand};
 

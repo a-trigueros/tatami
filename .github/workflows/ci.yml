@@ -1,0 +1,42 @@
+name: CI
+
+on: [push, pull_request]
+
+env:
+  # Keep in sync with the local jj used to pin adapter contracts (integration
+  # tests characterize real jj behavior). Bump together.
+  JJ_VERSION: v0.47.1
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install jj ${{ env.JJ_VERSION }}
+        run: |
+          curl -fsSL "https://github.com/jj-vcs/jj/releases/download/${JJ_VERSION}/jj-${JJ_VERSION}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/jj.tar.gz
+          tar -xzf /tmp/jj.tar.gz -C /tmp
+          sudo mv /tmp/jj /usr/local/bin/jj
+          jj --version
+      # Full suite: fast tier + integration tests against real jj.
+      - run: cargo test
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Fast tier only: no verified aarch64 asset name for the musl-style
+      # direct download; the Linux job proves the jj contracts.
+      - run: cargo test --lib

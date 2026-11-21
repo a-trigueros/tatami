@@ -158,3 +158,27 @@ Chaque jalon livrera un binaire utilisable.
   `.jj/tatami/` (uniforme), `jj` reste la seule interface.
 - Suppression : `jj workspace forget` ne touche pas au disque ; tatami fait
   forget + rm. Cas spécial workspace hôte → §5.
+- **Contrats épinglés empiriquement (jj 0.47.1)** : `jj workspace root` sort un
+  chemin absolu **canonicalisé** (symlinks résolus) ; hors repo → exit 1 + stderr
+  `Error: There is no jj repo in "."` ; le pointeur secondaire `.jj/repo` contient
+  un chemin **relatif au dossier `.jj` du workspace** (ex. `../../main/.jj/repo`,
+  sans newline) ; jj **tolère** les dossiers inconnus comme `.jj/tatami/`.
+  La version jj de référence est verrouillée dans `.github/workflows/ci.yml`.
+
+## 9. Avancement
+
+### M0 — Fondations ✅ (2026-11-21)
+
+- [x] Loader config : layering user (tatami → worktrunk), `TATAMI_CONFIG_PATH`,
+      schéma lenient, fallback `workspace-path` → `worktree-path`
+- [x] `tatami config show` (chemin résolu + source + workspace-path effectif)
+- [x] Erreurs typées (`thiserror`), `warnings = "deny"`, rustfmt, clippy
+- [x] Crate lib + bin (`src/lib.rs`, intégration tests via la lib)
+- [x] Adaptateur jj : trait `Jj`, impl `CliJj` subprocess, `JjError` typé
+- [x] Harness tests : `TempRepo` (vrai `jj git init`, config auteur isolée `JJ_CONFIG`)
+- [x] État interne : `state::state_dir` (hôte + pointeur, chemins canoniques)
+- [x] CI GitHub Actions : fmt, clippy, tests rapides (macOS), suite complète
+      avec vrai jj (Linux musl)
+
+Prochaine étape : M1 — `tt list`, `tt switch` (picker, `-`), intégration shell
+zsh/bash, état « workspace précédent » (consommera `state`), détection stale.
