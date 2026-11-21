@@ -29,13 +29,13 @@ Résolution : `~/.config/tatami/config.toml`, sinon fallback
 
 | Worktrunk | Tatami | Adaptation jj |
 |---|---|---|
-| `wt switch` | `tt switch [nom]` | cd vers la racine du workspace ; sans argument = picker ; `-` = précédent ; `--create` → `tt create` ; détection stale → proposer `jj workspace update-stale` |
+| `wt switch` | `tt switch [nom]` | cd vers la racine du workspace ; sans argument = picker ; `-` = précédent ; **`--create <nom>`** crée le workspace + bookmark homonyme puis switch (parité worktrunk : il n'existe pas de `wt create` autonome) ; détection stale inutile (voir §9) |
 | `wt list` | `tt list` | statuts jj : `@` vide/divergent/conflict, retard vs bookmark principal, stale, présence disque ; `--format json` |
-| `wt create` | `tt create <nom>` | `jj workspace add` + bookmark homonyme + copie des ignorés + hooks post-start |
+| `wt create` | — | **n'existe pas en amont** : worktrunk crée via `switch --create`. Destination par défaut : `../<repo>.<workspace>` (frère du repo, hors working copy) |
 | `wt remove` | `tt remove <nom>` | garde-fous (commits non intégrés → refuser sans `--force`) ; `jj workspace forget` + rm du répertoire ; `--delete-bookmark` si intégré ; poubelle différée ; **protection spéciale workspace hôte** (§5) |
 | `wt merge` | `tt merge [cible]` | décrire/squasher `nom@` → rebaser sur la cible si besoin → avancer le bookmark cible (ff) → `jj git push` éventuel → retirer le workspace |
 | `wt rebase` | `tt rebase` | `jj rebase -d <cible>` des commits du workspace |
-| `wt step …` | `tt step …` | primitives jj : `commit`, `squash`, `rebase`, `push`, `diff`, `for-each`, `prune`, `copy-ignored`, `eval`, `rename` (nouveau). `promote`/`tether` : hors périmètre v1 |
+| `wt step …` | `tt step …` | primitives jj : `commit`, `squash`, `rebase`, `push`, `diff`, `for-each`, `prune`, **`copy-ignored`** (ne fait PAS partie de la création — les utilisateurs le câblent en hook post-start), `eval`, `rename` (nouveau). `promote`/`tether` : hors périmètre v1 |
 | `wt hook …` | `tt hook …` | événements identiques (`pre/post` × `switch/start/commit/merge/remove`) ; approbation premier run dans `~/.config/tatami/approvals.toml` (fallback worktrunk, même règle que la config) |
 | `wt config …` | `tt config …` | `create/show/shell install\|uninstall/state` |
 
@@ -229,19 +229,34 @@ Notes épinglées (jj 0.47.1 + shells) :
   `compinit -d …/tatami/zcompdump` (flag: cost = léger coût de startup
   dupliqué, when = premier retour utilisateur).
 
-### Prochaine étape : M2 — create + remove
+### M2 — create + remove (en cours, 2026-11-21)
 
-- `tt create <nom>` : `jj workspace add` + bookmark homonyme (`jj bookmark
-  create <nom> -r @`), template de nom (`workspace-path` + minijinja reste
-  M4 mais le chemin simple `.wt/<nom>` doit marcher dès M2), copie des
-  fichiers ignorés (`.env`…), hooks pre/post-start avec approbation
-- `tt remove <nom>` : garde-fous (commits non intégrés → refuser sans
-  `--force`), `jj workspace forget` + rm du répertoire, poubelle différée,
-  avertissement fort si le workspace est l'**hôte** du stockage (PLAN §5),
-  hooks pre/post-remove
-- Schema config : modeler `[merge]`, `[remove]`, `[switch]` consommés par ces
-  commandes ; hooks (`pre-start` etc.) deviennent typés (formes string /
-  table / pipeline épinglées dans PLAN §4)
+- [x] `tt switch --create <nom>` (parité worktrunk, pas de `tt create`
+      autonome) : `jj workspace add --name` + bookmark homonyme (`jj bookmark
+      create <nom> -r <nom>@`) ; `jj workspace add` exige que le parent de la
+      destination existe (vérifié) → tatami crée les parents ; re-listing après
+      création avant le switch
+- [x] Résolution de destination : défaut `../<repo>.<workspace>` (parité
+      worktrunk sourcée) ; template `workspace-path` (fallback
+      `worktree-path`) avec expansion minimale `{{ workspace }}`/`{{ branch }}`
+      (+ `| sanitize` : hors `[A-Za-z0-9._-]` → `-`), `~/…`, chemins absolus,
+      relatifs résolus depuis la racine courante. `shortcut:` moteur complet
+      (minijinja, tous filtres/variables) en M4
+- [x] Noms validés (lettres/chiffres `-_/ .`, pas de `-`/`.` initial) — ils
+      servent aussi de nom de bookmark
+- [x] **jj exclut automatiquement les nested workspaces du snapshot** du
+      workspace englobant (vérifié 0.47.1 : `jj st` propre avec `.wt/inner`
+      existant) → template in-repo sûr sans configuration
+- [ ] `tt remove <nom>` : refus du workspace courant (tatami ne déplace
+      personne), refus dur du workspace **hôte** (PLAN §5), `jj workspace
+      forget` + rm du répertoire, `--delete-bookmark`, poubelle différée ;
+      pas de `--force` anti-« dirty » : le working copy jj est toujours un
+      commit — le contrôle d'intégration (commits non fusionnés) vient avec
+      M3 où la résolution du bookmark principal sera de toute façon nécessaire
+- [ ] Hooks pre/post-start + approbations (slice dédiée) : ordre sourcé
+      worktrunk = pre-switch (bloquant) → création → switch → pre-start
+      (bloquant) → post-start (arrière-plan) + post-switch ; `copy-ignored`
+      est typiquement câblé post-start (lui-même en M3)
 
 ### Contrats jj épinglés pour `tt list` (jj 0.47.1, docs templates v0.47.1)
 

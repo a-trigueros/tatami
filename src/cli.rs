@@ -24,6 +24,9 @@ pub enum Command {
     Switch {
         /// Workspace name, or `-` for the previous one; omitted for the picker
         name: Option<String>,
+        /// Create the workspace (and its namesake bookmark) before switching
+        #[arg(long)]
+        create: bool,
     },
     /// Inspect tatami configuration
     Config {

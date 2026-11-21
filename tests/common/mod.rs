@@ -66,6 +66,23 @@ impl TempRepo {
         );
     }
 
+    /// Runs jj and returns trimmed stdout (for inspecting repo state).
+    pub fn capture_jj(&self, args: &[&str]) -> String {
+        let output = Command::new("jj")
+            .args(args)
+            .current_dir(self.dir.path().join("repo"))
+            .env("JJ_CONFIG", &self.config_path)
+            .output()
+            .expect("jj binary must be installed and on PATH");
+        assert!(
+            output.status.success(),
+            "jj {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
     /// Root of the freshly created repo. Canonicalized because jj resolves
     /// symlinks in the paths it prints (macOS `/var` → `/private/var`).
     pub fn path(&self) -> PathBuf {

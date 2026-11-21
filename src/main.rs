@@ -19,9 +19,17 @@ fn main() {
                 std::process::exit(1);
             });
         }
-        Command::Switch { name } => {
+        Command::Switch { name, create } => {
             let dir = std::env::current_dir().unwrap_or_else(|error| {
                 eprintln!("tatami: cannot determine the current directory: {error}");
+                std::process::exit(1);
+            });
+            let paths_env = paths::ConfigEnv::from_env().unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let user_config = config::load_user_config(&paths_env).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
                 std::process::exit(1);
             });
             let adapter = jj::CliJj::at(dir.clone());
@@ -29,9 +37,16 @@ fn main() {
                 eprintln!("tatami: {error}");
                 std::process::exit(1);
             });
+            let args = cmd::switch::SwitchArgs {
+                name: name.as_deref(),
+                create,
+                workspace_template: user_config.config.workspace_path(),
+                current_root: &dir,
+                home: paths_env.home(),
+            };
             let destination = cmd::switch::run(
                 &adapter,
-                name.as_deref(),
+                args,
                 &state,
                 &mut std::io::stderr().lock(),
                 &mut std::io::stdin().lock(),

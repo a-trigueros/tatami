@@ -2,9 +2,20 @@ mod common;
 
 use common::TempRepo;
 use std::io::Cursor;
-use tatami::cmd::switch;
+use std::path::Path;
+use tatami::cmd::switch::{self, SwitchArgs};
 use tatami::jj::CliJj;
 use tatami::state::{FileState, WorkspaceState};
+
+fn args<'a>(root: &'a Path, name: Option<&'a str>, create: bool) -> SwitchArgs<'a> {
+    SwitchArgs {
+        name,
+        create,
+        workspace_template: None,
+        current_root: root,
+        home: Path::new("/home/u"),
+    }
+}
 
 #[test]
 fn switches_between_workspaces_and_records_the_previous_one() {
@@ -18,7 +29,7 @@ fn switches_between_workspaces_and_records_the_previous_one() {
 
     let dest = switch::run(
         &jj,
-        Some("ws2"),
+        args(&repo.path(), Some("ws2"), false),
         &state,
         &mut menu,
         &mut Cursor::new(String::new()),
@@ -37,7 +48,7 @@ fn switches_between_workspaces_and_records_the_previous_one() {
     let state_from_ws2 = FileState::for_workspace(&ws2_root).unwrap();
     let dest = switch::run(
         &jj_from_ws2,
-        Some("-"),
+        args(&ws2_root, Some("-"), false),
         &state_from_ws2,
         &mut menu,
         &mut Cursor::new(String::new()),
@@ -62,7 +73,7 @@ fn switches_in_place_without_touching_the_previous_state() {
     // Establish `ws2` as the previous workspace first.
     switch::run(
         &jj,
-        Some("ws2"),
+        args(&repo.path(), Some("ws2"), false),
         &state,
         &mut menu,
         &mut Cursor::new(String::new()),
@@ -71,7 +82,7 @@ fn switches_in_place_without_touching_the_previous_state() {
 
     let dest = switch::run(
         &jj,
-        Some("default"),
+        args(&repo.path(), Some("default"), false),
         &state,
         &mut menu,
         &mut Cursor::new(String::new()),

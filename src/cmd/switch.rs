@@ -5,19 +5,34 @@
 //! captures it); the picker menu goes to stderr so it never pollutes `cd`.
 
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
+use crate::cmd::create::{self, CreateError};
 use crate::jj::{Jj, JjError, WorkspaceInfo};
 use crate::state::{StateError, WorkspaceState};
 
 /// `-` is reserved for "previous workspace".
 const PREVIOUS_NAME: &str = "-";
 
+/// Everything `tt switch` needs from its caller: the inputs vary per
+/// invocation, the jj adapter and state store are injected separately.
+#[derive(Debug, Clone)]
+pub struct SwitchArgs<'a> {
+    pub name: Option<&'a str>,
+    /// `--create <name>`: create the workspace, then switch to it.
+    pub create: bool,
+    /// `workspace-path` template from the user config (legacy
+    /// `worktree-path` already folded in by the loader).
+    pub workspace_template: Option<&'a str>,
+    pub current_root: &'a Path,
+    pub home: &'a Path,
+}
+
 pub fn run(
     jj: &dyn Jj,
-    name: Option<&str>,
+    args: SwitchArgs<'_>,
     state: &dyn WorkspaceState,
     menu_out: &mut dyn Write,
     picker_in: &mut dyn BufRead,
@@ -28,15 +43,28 @@ pub fn run(
         .find(|w| w.is_current)
         .ok_or(SwitchError::CurrentWorkspaceNotFound)?;
 
-    let target = match name {
-        None => pick(&workspaces, menu_out, picker_in)?,
-        Some(PREVIOUS_NAME) => {
+    let target: WorkspaceInfo = match (args.create, args.name) {
+        (true, Some(name)) => {
+            create::run(
+                jj,
+                name,
+                args.workspace_template,
+                args.current_root,
+                args.home,
+            )?;
+            // Re-list: the fresh workspace must exist before we switch to it.
+            let fresh = jj.workspaces()?;
+            resolve(&fresh, name)?.clone()
+        }
+        (true, None) => return Err(SwitchError::CreateNeedsName),
+        (false, None) => pick(&workspaces, menu_out, picker_in)?.clone(),
+        (false, Some(PREVIOUS_NAME)) => {
             let previous = state
                 .previous_workspace()?
                 .ok_or(SwitchError::NoPreviousWorkspace)?;
-            resolve(&workspaces, &previous)?
+            resolve(&workspaces, &previous)?.clone()
         }
-        Some(name) => resolve(&workspaces, name)?,
+        (false, Some(name)) => resolve(&workspaces, name)?.clone(),
     };
 
     if target.name == current.name {
@@ -45,7 +73,7 @@ pub fn run(
         return destination(current);
     }
     state.set_previous_workspace(Some(&current.name))?;
-    destination(target)
+    destination(&target)
 }
 
 fn resolve<'w>(
@@ -120,6 +148,10 @@ pub enum SwitchError {
     Jj(#[from] JjError),
     #[error(transparent)]
     State(#[from] StateError),
+    #[error(transparent)]
+    Create(#[from] CreateError),
+    #[error("`--create` needs a workspace name")]
+    CreateNeedsName,
     #[error("no workspace named `{name}` (available: {available})")]
     UnknownWorkspace { name: String, available: String },
     #[error("no previous workspace recorded — use `tt switch <name>` first")]
@@ -165,6 +197,18 @@ mod switch_should {
 
         fn workspaces(&self) -> Result<Vec<WorkspaceInfo>, JjError> {
             Ok(self.workspaces.clone())
+        }
+
+        fn workspace_add(
+            &self,
+            _name: &str,
+            _destination: &std::path::Path,
+        ) -> Result<(), JjError> {
+            panic!("FakeJj::workspace_add is not exercised by switch tests")
+        }
+
+        fn bookmark_create(&self, _name: &str, _workspace: &str) -> Result<(), JjError> {
+            panic!("FakeJj::bookmark_create is not exercised by switch tests")
         }
     }
 
@@ -231,9 +275,29 @@ mod switch_should {
         state: &dyn WorkspaceState,
         input: &str,
     ) -> (Result<PathBuf, SwitchError>, Vec<u8>) {
+        switch_with(
+            jj,
+            SwitchArgs {
+                name,
+                create: false,
+                workspace_template: None,
+                current_root: Path::new("/repo/default"),
+                home: Path::new("/home/u"),
+            },
+            state,
+            input,
+        )
+    }
+
+    fn switch_with(
+        jj: &dyn Jj,
+        args: SwitchArgs<'_>,
+        state: &dyn WorkspaceState,
+        input: &str,
+    ) -> (Result<PathBuf, SwitchError>, Vec<u8>) {
         let mut menu = Vec::new();
         let mut picker_in = Cursor::new(input.to_string());
-        let result = run(jj, name, state, &mut menu, &mut picker_in);
+        let result = run(jj, args, state, &mut menu, &mut picker_in);
         (result, menu)
     }
 
@@ -242,6 +306,24 @@ mod switch_should {
         let (result, _) = switch_from(&repo(), Some("ws2"), &FakeState::empty(), "");
 
         assert_eq!(result.unwrap(), PathBuf::from("/repo/ws2"));
+    }
+
+    #[test]
+    fn fails_when_creating_without_a_name() {
+        let (result, _) = switch_with(
+            &repo(),
+            SwitchArgs {
+                name: None,
+                create: true,
+                workspace_template: None,
+                current_root: Path::new("/repo/default"),
+                home: Path::new("/home/u"),
+            },
+            &FakeState::empty(),
+            "",
+        );
+
+        assert!(matches!(result.unwrap_err(), SwitchError::CreateNeedsName));
     }
 
     #[test]

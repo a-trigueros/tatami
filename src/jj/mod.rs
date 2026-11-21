@@ -4,7 +4,7 @@
 //! output (`-T`) is the only durable contract. Everything else in tatami
 //! depends on the [`Jj`] trait, never on jj internals.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use thiserror::Error;
 
@@ -17,6 +17,16 @@ pub trait Jj {
     /// All workspaces tracked by the repository, with their working-copy
     /// status.
     fn workspaces(&self) -> Result<Vec<WorkspaceInfo>, JjError>;
+
+    /// Creates a workspace named `name` at `destination` (which must not
+    /// exist; its parent must). The new working-copy commit is parented on
+    /// the current one.
+    fn workspace_add(&self, name: &str, destination: &Path) -> Result<(), JjError>;
+
+    /// Creates a bookmark `name` pointing at `<workspace>@` — the new
+    /// workspace's working-copy commit. A fresh `@` is empty; jj warns about
+    /// it and succeeds.
+    fn bookmark_create(&self, name: &str, workspace: &str) -> Result<(), JjError>;
 }
 
 /// Working-copy commit status of a workspace, as jj sees it.
@@ -124,6 +134,22 @@ impl Jj for CliJj {
             command: "jj workspace list".to_string(),
             source,
         })
+    }
+
+    fn workspace_add(&self, name: &str, destination: &Path) -> Result<(), JjError> {
+        self.run(&[
+            "workspace",
+            "add",
+            "--name",
+            name,
+            &destination.display().to_string(),
+        ])?;
+        Ok(())
+    }
+
+    fn bookmark_create(&self, name: &str, workspace: &str) -> Result<(), JjError> {
+        self.run(&["bookmark", "create", name, "-r", &format!("{workspace}@")])?;
+        Ok(())
     }
 }
 
