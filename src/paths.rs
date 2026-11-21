@@ -85,6 +85,22 @@ impl ConfigEnv {
         ]
     }
 
+    /// The tatami directory inside the config root (`$XDG_CONFIG_HOME/tatami`
+    /// or `~/.config/tatami`), where generated files (completions) live.
+    pub fn tatami_config_dir(&self) -> PathBuf {
+        let dir = self
+            .xdg_config_home
+            .clone()
+            .filter(|p| p.is_absolute())
+            .unwrap_or_else(|| self.home.join(".config"));
+        dir.join("tatami")
+    }
+
+    /// The home directory the environment resolved to.
+    pub fn home(&self) -> &std::path::Path {
+        &self.home
+    }
+
     /// Test-only constructor: resolution inputs without reading the process
     /// environment.
     #[cfg(test)]

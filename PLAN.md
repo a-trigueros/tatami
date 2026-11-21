@@ -180,7 +180,7 @@ Chaque jalon livrera un binaire utilisable.
 - [x] CI GitHub Actions : fmt, clippy, tests rapides (macOS), suite complète
       avec vrai jj (Linux musl)
 
-### M1 — list + switch + shell (en cours, 2026-11-21)
+### M1 — list + switch + shell ✅ (2026-11-21)
 
 - [x] Adaptateur `workspaces()` : JSONL via `json({...})` dans `-T`
       (`WorkspaceInfo` : name, root, is_current, wc{change, description,
@@ -195,23 +195,53 @@ Chaque jalon livrera un binaire utilisable.
       no-op sur place sans toucher l'état ; picker numéroté sans argument
       (menu sur **stderr**, choix sur stdin, une tentative) ; stdout ne porte
       **que le chemin** (contrat du wrapper shell)
-- [ ] `tt config shell install` zsh/bash (wrapper `tt` qui intercepte
-      `switch` et fait le `cd`)
-- [ ] complétions
+- [x] `tt config shell install/uninstall` zsh/bash : bloc marqué
+      (`# >>> tatami shell integration >>>`) dans `~/.zshrc`/`~/.bashrc`,
+      idempotent (ré-install = remplacement), uninstall ne retire que le bloc ;
+      `tt` intercepte `switch` et fait le `cd`, tout le reste passe au binaire
+- [x] Complétions : zsh `_tatami` dans `$XDG_CONFIG_HOME/tatami/completions`
+      (fpath + compinit dans le bloc), bash dans
+      `~/.local/share/bash-completion/completions/tatami` ; `tt config shell
+      completion <zsh|bash>` pour un câblage manuel
+- [x] Preuve end-to-end : vrai zsh **et** vrai bash sourcent le rc installé
+      dans un HOME factice et font le `cd` (tests `shell_integration_should`,
+      skip propre si l'interpréteur manque ; CI ubuntu installe zsh)
+- [x] `Cli` déplacé en lib (`src/cli.rs`) — source unique binaire +
+      complétions (`clap_complete`)
 
-Notes épinglées (jj 0.47.1) :
+Notes épinglées (jj 0.47.1 + shells) :
 
 - **Stale** : `jj workspace list` / `jj log` fonctionnent depuis un workspace
   stale (exit 0, vérifié) — seules les commandes qui snapshot échouent, et jj
   affiche lui-même `use jj workspace update-stale`. Donc **pas de gestion
-  stale** dans `tt list`/`tt switch` ; l'affichage d'un indicateur « stale »
-  dans `tt list` reste une idée M5 (nécessiterait de lire les internes jj ou
-  un `jj st` par workspace).
+  stale** dans `tt list`/`tt switch` ; un indicateur « stale » dans `tt list`
+  reste une idée M5.
 - Switch = le binaire imprime le chemin, **le shell fait le `cd`** — sans le
   wrapper, `tt switch` ne déplace personne (vérifié en smoke test).
 - Picker minimal numéroté (une seule tentative, EOF/choix invalide = annulé).
   Un vrai picker interactif (fzf-like ou curseur) reste possible plus tard ;
   `switch.picker.pager` du schéma worktrunk s'appliquera à ce moment-là.
+- **`zsh -i -c` ne source pas `~/.zshrc`** (vérifié) — les tests prouvent le
+  contenu du bloc via `source` explicite ; le comportement des sessions
+  zsh interactives réelles reste celui documenté par zsh.
+- Complétions zsh `compinit` : le bloc appelle `compinit` sans dump dédié —
+  si un conflit de dump apparaît chez un utilisateur, passer à
+  `compinit -d …/tatami/zcompdump` (flag: cost = léger coût de startup
+  dupliqué, when = premier retour utilisateur).
+
+### Prochaine étape : M2 — create + remove
+
+- `tt create <nom>` : `jj workspace add` + bookmark homonyme (`jj bookmark
+  create <nom> -r @`), template de nom (`workspace-path` + minijinja reste
+  M4 mais le chemin simple `.wt/<nom>` doit marcher dès M2), copie des
+  fichiers ignorés (`.env`…), hooks pre/post-start avec approbation
+- `tt remove <nom>` : garde-fous (commits non intégrés → refuser sans
+  `--force`), `jj workspace forget` + rm du répertoire, poubelle différée,
+  avertissement fort si le workspace est l'**hôte** du stockage (PLAN §5),
+  hooks pre/post-remove
+- Schema config : modeler `[merge]`, `[remove]`, `[switch]` consommés par ces
+  commandes ; hooks (`pre-start` etc.) deviennent typés (formes string /
+  table / pipeline épinglées dans PLAN §4)
 
 ### Contrats jj épinglés pour `tt list` (jj 0.47.1, docs templates v0.47.1)
 

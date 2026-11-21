@@ -29,6 +29,8 @@ jobs:
           tar -xzf /tmp/jj.tar.gz -C /tmp
           sudo mv /tmp/jj /usr/local/bin/jj
           jj --version
+      # The shell-integration proofs run real zsh (bash is preinstalled).
+      - run: sudo apt-get update && sudo apt-get install -y zsh
       # Full suite: fast tier + integration tests against real jj.
       - run: cargo test
 

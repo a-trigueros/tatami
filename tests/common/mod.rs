@@ -1,5 +1,13 @@
 //! Test harness: a throwaway real jj repo. Proof tier — requires the `jj`
 //! binary on PATH; runs everywhere jj exists (CI installs it).
+//!
+//! shortcut: `allow(dead_code)` — this module is included per test crate and
+//! each crate only exercises part of the harness; per-crate dead-code
+//! analysis cannot know that. Remove helpers nobody uses when a milestone
+//! lands.
+
+// Per-crate dead-code analysis can't see which helper each test crate uses.
+#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -68,6 +76,12 @@ impl TempRepo {
     /// cases).
     pub fn outside_dir(&self) -> &Path {
         self.dir.path()
+    }
+
+    /// The isolated jj config file passed as `JJ_CONFIG` — share it with any
+    /// subprocess (shells, the tatami binary itself) so tests stay hermetic.
+    pub fn jj_config_path(&self) -> &Path {
+        &self.config_path
     }
 
     /// Describes the current workspace's working-copy commit.
