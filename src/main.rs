@@ -1,4 +1,4 @@
-use tatami::{cmd, config, jj, paths};
+use tatami::{cmd, config, jj, paths, state};
 
 use clap::{Parser, Subcommand};
 
@@ -23,6 +23,11 @@ enum Command {
     Config {
         #[command(subcommand)]
         command: ConfigCommand,
+    },
+    /// Resolve the workspace to switch to (the shell wrapper performs the cd)
+    Switch {
+        /// Workspace name, or `-` for the previous one; omitted for the picker
+        name: Option<String>,
     },
 }
 
@@ -62,5 +67,28 @@ fn main() {
                 });
             }
         },
+        Command::Switch { name } => {
+            let dir = std::env::current_dir().unwrap_or_else(|error| {
+                eprintln!("tatami: cannot determine the current directory: {error}");
+                std::process::exit(1);
+            });
+            let adapter = jj::CliJj::at(dir.clone());
+            let state = state::FileState::for_workspace(&dir).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let destination = cmd::switch::run(
+                &adapter,
+                name.as_deref(),
+                &state,
+                &mut std::io::stderr().lock(),
+                &mut std::io::stdin().lock(),
+            )
+            .unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            println!("{}", destination.display());
+        }
     }
 }

@@ -1,0 +1,87 @@
+mod common;
+
+use common::TempRepo;
+use std::io::Cursor;
+use tatami::cmd::switch;
+use tatami::jj::CliJj;
+use tatami::state::{FileState, WorkspaceState};
+
+#[test]
+fn switches_between_workspaces_and_records_the_previous_one() {
+    let repo = TempRepo::init();
+    repo.describe_working_copy("main workspace");
+    repo.add_workspace("ws2");
+
+    let jj = CliJj::at(repo.path().clone());
+    let state = FileState::for_workspace(&repo.path()).unwrap();
+    let mut menu = Vec::new();
+
+    let dest = switch::run(
+        &jj,
+        Some("ws2"),
+        &state,
+        &mut menu,
+        &mut Cursor::new(String::new()),
+    )
+    .expect("switch to ws2");
+    let ws2_root = repo.path().parent().unwrap().join("ws2");
+    assert_eq!(dest, ws2_root);
+    assert_eq!(
+        state.previous_workspace().unwrap(),
+        Some("default".to_string())
+    );
+
+    // The shell has now moved to ws2; tatami runs from there, and the state —
+    // repo-global — is found again through the pointer file.
+    let jj_from_ws2 = CliJj::at(ws2_root.clone());
+    let state_from_ws2 = FileState::for_workspace(&ws2_root).unwrap();
+    let dest = switch::run(
+        &jj_from_ws2,
+        Some("-"),
+        &state_from_ws2,
+        &mut menu,
+        &mut Cursor::new(String::new()),
+    )
+    .expect("switch back with -");
+    assert_eq!(dest, repo.path());
+    assert_eq!(
+        state_from_ws2.previous_workspace().unwrap(),
+        Some("ws2".to_string())
+    );
+}
+
+#[test]
+fn switches_in_place_without_touching_the_previous_state() {
+    let repo = TempRepo::init();
+    repo.add_workspace("ws2");
+
+    let jj = CliJj::at(repo.path().clone());
+    let state = FileState::for_workspace(&repo.path()).unwrap();
+    let mut menu = Vec::new();
+
+    // Establish `ws2` as the previous workspace first.
+    switch::run(
+        &jj,
+        Some("ws2"),
+        &state,
+        &mut menu,
+        &mut Cursor::new(String::new()),
+    )
+    .unwrap();
+
+    let dest = switch::run(
+        &jj,
+        Some("default"),
+        &state,
+        &mut menu,
+        &mut Cursor::new(String::new()),
+    )
+    .expect("switch to current workspace");
+
+    assert_eq!(dest, repo.path());
+    assert_eq!(
+        state.previous_workspace().unwrap(),
+        Some("default".to_string()),
+        "switching in place must not overwrite the escape route"
+    );
+}

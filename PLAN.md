@@ -188,12 +188,30 @@ Chaque jalon livrera un binaire utilisable.
 - [x] `tt list` : table alignée (marqueur courant `*`, change, description,
       flags empty/conflict/divergent, racine + marque `(missing)` si absente
       du disque)
-- [ ] `tt switch [nom]` (picker sans argument, `-` = précédent, stale →
-      proposer `update-stale`)
-- [ ] État « workspace précédent » (premier consommateur de `state`)
-- [ ] `tt config shell install` zsh/bash (wrapper `tt` pour le cd)
+- [x] `state::WorkspaceState` (trait) + `FileState` (`.jj/tatami/
+      previous_workspace`) — partagé entre workspaces via le pointeur,
+      prouvé en intégration
+- [x] `tt switch [nom|-]` : résolution, enregistrement du workspace quitté,
+      no-op sur place sans toucher l'état ; picker numéroté sans argument
+      (menu sur **stderr**, choix sur stdin, une tentative) ; stdout ne porte
+      **que le chemin** (contrat du wrapper shell)
+- [ ] `tt config shell install` zsh/bash (wrapper `tt` qui intercepte
+      `switch` et fait le `cd`)
+- [ ] complétions
 
-Prochaine étape : `tt switch` + état précédent, puis intégration shell.
+Notes épinglées (jj 0.47.1) :
+
+- **Stale** : `jj workspace list` / `jj log` fonctionnent depuis un workspace
+  stale (exit 0, vérifié) — seules les commandes qui snapshot échouent, et jj
+  affiche lui-même `use jj workspace update-stale`. Donc **pas de gestion
+  stale** dans `tt list`/`tt switch` ; l'affichage d'un indicateur « stale »
+  dans `tt list` reste une idée M5 (nécessiterait de lire les internes jj ou
+  un `jj st` par workspace).
+- Switch = le binaire imprime le chemin, **le shell fait le `cd`** — sans le
+  wrapper, `tt switch` ne déplace personne (vérifié en smoke test).
+- Picker minimal numéroté (une seule tentative, EOF/choix invalide = annulé).
+  Un vrai picker interactif (fzf-like ou curseur) reste possible plus tard ;
+  `switch.picker.pager` du schéma worktrunk s'appliquera à ce moment-là.
 
 ### Contrats jj épinglés pour `tt list` (jj 0.47.1, docs templates v0.47.1)
 

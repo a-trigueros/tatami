@@ -11,6 +11,74 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+/// Tatami's repo-global state, persisted under the host workspace's
+/// `.jj/tatami/` directory. Faked in fast tests, proven against real repos in
+/// integration tests.
+pub trait WorkspaceState {
+    /// The workspace a successful `tt switch -` goes back to.
+    fn previous_workspace(&self) -> Result<Option<String>, StateError>;
+
+    /// Records (or clears, with `None`) the previous workspace.
+    fn set_previous_workspace(&self, name: Option<&str>) -> Result<(), StateError>;
+}
+
+/// File-backed [`WorkspaceState`] for the repo reachable from a workspace.
+pub struct FileState {
+    dir: PathBuf,
+}
+
+/// Name of the previous-workspace file inside the state directory.
+const PREVIOUS_FILE: &str = "previous_workspace";
+
+impl FileState {
+    /// Resolves the state directory for `workspace_root` (see [`state_dir`]).
+    /// The directory itself is created lazily, on first write.
+    pub fn for_workspace(workspace_root: &Path) -> Result<Self, StateError> {
+        Ok(Self {
+            dir: state_dir(workspace_root)?,
+        })
+    }
+
+    fn previous_path(&self) -> PathBuf {
+        self.dir.join(PREVIOUS_FILE)
+    }
+}
+
+impl WorkspaceState for FileState {
+    fn previous_workspace(&self) -> Result<Option<String>, StateError> {
+        let path = self.previous_path();
+        match fs::read_to_string(&path) {
+            Ok(name) => {
+                let name = name.trim().to_string();
+                if name.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(name))
+                }
+            }
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(source) => Err(StateError::ReadFile { path, source }),
+        }
+    }
+
+    fn set_previous_workspace(&self, name: Option<&str>) -> Result<(), StateError> {
+        let path = self.previous_path();
+        fs::create_dir_all(&self.dir).map_err(|source| StateError::WriteDir {
+            path: self.dir.clone(),
+            source,
+        })?;
+        match name {
+            Some(name) => fs::write(&path, format!("{name}\n"))
+                .map_err(|source| StateError::WriteFile { path, source }),
+            None => match fs::remove_file(&path) {
+                Ok(()) => Ok(()),
+                Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(source) => Err(StateError::WriteFile { path, source }),
+            },
+        }
+    }
+}
+
 /// Absolute directory where tatami's repo-global state lives for the repo
 /// reachable from `workspace_root`.
 ///
@@ -71,6 +139,24 @@ pub enum StateError {
     },
     #[error("jj repo pointer {path} does not lead to a workspace root")]
     MalformedPointer { path: PathBuf },
+    #[error("cannot create tatami state directory {path}: {source}")]
+    WriteDir {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("cannot write tatami state file {path}: {source}")]
+    WriteFile {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("cannot read tatami state file {path}: {source}")]
+    ReadFile {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 #[cfg(test)]
@@ -132,5 +218,75 @@ mod state_dir_should {
             matches!(error, StateError::DanglingPointer { .. }),
             "expected DanglingPointer, got: {error:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod file_state_should {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    fn mkdir_all(path: &Path) {
+        fs::create_dir_all(path).unwrap();
+    }
+
+    /// A workspace-shaped temp dir: hosts its own repo storage, so the state
+    /// dir is `<root>/.jj/tatami`.
+    fn workspace() -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        mkdir_all(&root.path().join(".jj/repo"));
+        root
+    }
+
+    #[test]
+    fn round_trips_the_previous_workspace() {
+        let root = workspace();
+        let state = FileState::for_workspace(root.path()).unwrap();
+
+        state.set_previous_workspace(Some("ws2")).unwrap();
+
+        assert_eq!(state.previous_workspace().unwrap(), Some("ws2".to_string()));
+    }
+
+    #[test]
+    fn answers_none_when_nothing_was_recorded() {
+        let root = workspace();
+        let state = FileState::for_workspace(root.path()).unwrap();
+
+        assert_eq!(state.previous_workspace().unwrap(), None);
+    }
+
+    #[test]
+    fn clears_the_previous_workspace() {
+        let root = workspace();
+        let state = FileState::for_workspace(root.path()).unwrap();
+        state.set_previous_workspace(Some("ws2")).unwrap();
+
+        state.set_previous_workspace(None).unwrap();
+
+        assert_eq!(state.previous_workspace().unwrap(), None);
+    }
+
+    #[test]
+    fn stores_the_state_in_the_host_workspaces_tatami_dir() {
+        let root = workspace();
+        let state = FileState::for_workspace(root.path()).unwrap();
+
+        state.set_previous_workspace(Some("ws2")).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.path().join(".jj/tatami/previous_workspace")).unwrap(),
+            "ws2\n"
+        );
+    }
+
+    #[test]
+    fn treats_an_empty_state_file_as_unrecorded() {
+        let root = workspace();
+        let state = FileState::for_workspace(root.path()).unwrap();
+        fs::create_dir_all(root.path().join(".jj/tatami")).unwrap();
+        fs::write(root.path().join(".jj/tatami/previous_workspace"), "  \n").unwrap();
+
+        assert_eq!(state.previous_workspace().unwrap(), None);
     }
 }

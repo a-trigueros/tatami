@@ -5,3 +5,4 @@
 //! by the adapter's integration tests.
 
 pub mod list;
+pub mod switch;
