@@ -180,5 +180,32 @@ Chaque jalon livrera un binaire utilisable.
 - [x] CI GitHub Actions : fmt, clippy, tests rapides (macOS), suite complète
       avec vrai jj (Linux musl)
 
-Prochaine étape : M1 — `tt list`, `tt switch` (picker, `-`), intégration shell
-zsh/bash, état « workspace précédent » (consommera `state`), détection stale.
+### M1 — list + switch + shell (en cours, 2026-11-21)
+
+- [x] Adaptateur `workspaces()` : JSONL via `json({...})` dans `-T`
+      (`WorkspaceInfo` : name, root, is_current, wc{change, description,
+      empty, conflict, divergent})
+- [x] `tt list` : table alignée (marqueur courant `*`, change, description,
+      flags empty/conflict/divergent, racine + marque `(missing)` si absente
+      du disque)
+- [ ] `tt switch [nom]` (picker sans argument, `-` = précédent, stale →
+      proposer `update-stale`)
+- [ ] État « workspace précédent » (premier consommateur de `state`)
+- [ ] `tt config shell install` zsh/bash (wrapper `tt` pour le cd)
+
+Prochaine étape : `tt switch` + état précédent, puis intégration shell.
+
+### Contrats jj épinglés pour `tt list` (jj 0.47.1, docs templates v0.47.1)
+
+- `jj workspace list` n'a **pas** de `--format` ; le contrat passe par `-T` :
+  `json({...}) ++ "\n"` → JSONL parsé en `serde_json` (drift de version =
+  `JjError::ParseOutput` explicite).
+- `WorkspaceRef` : `name`, `current_workspace`, `root` (Option — None pour les
+  workspaces créés avant jj 0.38), `target` (le commit de working copy, avec
+  `.empty()/.conflict()/.divergent()/.description()/.change_id()`).
+- Le mot-clé `working_copy` n'existe pas (c'est `target`) ; `path` non plus
+  (c'est `root`).
+- `description()` se termine par `\n` si non vide → `trim_end()` dans le
+  template.
+- Stale : pas de flag dans les templates — reporté à `tt switch` (réaction à
+  l'erreur jj), pas à `tt list`.

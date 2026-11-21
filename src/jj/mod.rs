@@ -13,6 +13,41 @@ use thiserror::Error;
 pub trait Jj {
     /// Absolute root directory of the current workspace.
     fn workspace_root(&self) -> Result<PathBuf, JjError>;
+
+    /// All workspaces tracked by the repository, with their working-copy
+    /// status.
+    fn workspaces(&self) -> Result<Vec<WorkspaceInfo>, JjError>;
+}
+
+/// Working-copy commit status of a workspace, as jj sees it.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct WcStatus {
+    /// Short change id, for display.
+    pub change: String,
+    /// Commit description, trimmed; empty when undescribed.
+    pub description: String,
+    /// The commit modifies no files.
+    pub empty: bool,
+    /// The commit contains merge conflicts.
+    pub conflict: bool,
+    /// The change id corresponds to multiple visible commits.
+    pub divergent: bool,
+}
+
+/// A workspace tracked by the repository.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct WorkspaceInfo {
+    pub name: String,
+    /// Root directory as recorded by jj — canonical, symlinks resolved.
+    /// `None` for workspaces created before jj 0.38.0, which did not record it.
+    pub root: Option<PathBuf>,
+    /// True when this is the workspace the adapter runs in.
+    #[serde(rename = "current")]
+    pub is_current: bool,
+    /// jj's JSONL output is flat; the workspace-level vs working-copy-level
+    /// split is tatami's domain structure.
+    #[serde(flatten)]
+    pub wc: WcStatus,
 }
 
 /// Invokes the real `jj` binary.
@@ -37,7 +72,7 @@ impl CliJj {
             .map_err(|source| JjError::Spawn { source })?;
         if !output.status.success() {
             return Err(JjError::CommandFailed {
-                command: format!("jj {}", args.join(" ")),
+                command: command_label(args),
                 status: output.status,
                 stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
             });
@@ -46,10 +81,49 @@ impl CliJj {
     }
 }
 
+/// `jj <args>` with long arguments (templates) elided, so error messages stay
+/// readable while keeping the subcommand identifiable.
+fn command_label(args: &[&str]) -> String {
+    const MAX_ARG_CHARS: usize = 60;
+    let elided: Vec<String> = args
+        .iter()
+        .map(|arg| {
+            if arg.chars().count() > MAX_ARG_CHARS {
+                let prefix: String = arg.chars().take(MAX_ARG_CHARS).collect();
+                format!("{prefix}…")
+            } else {
+                (*arg).to_string()
+            }
+        })
+        .collect();
+    format!("jj {}", elided.join(" "))
+}
+
+/// Template emitting one JSON object per workspace. Field names must match
+/// [`WorkspaceInfo`]/[`WcStatus`] serde names. Contract pinned against
+/// jj 0.47.1: `WorkspaceRef` keywords `name`, `current_workspace`, `root`,
+/// `target` (see docs.jj-vcs.dev templates, WorkspaceRef type).
+const WORKSPACE_LIST_TEMPLATE: &str = concat!(
+    r#"json({"name" => name, "current" => current_workspace, "root" => root, "#,
+    r#""empty" => target.empty(), "conflict" => target.conflict(), "#,
+    r#""divergent" => target.divergent(), "description" => target.description().trim_end(), "#,
+    r#""change" => target.change_id().short()}) ++ "\n""#,
+);
+
 impl Jj for CliJj {
     fn workspace_root(&self) -> Result<PathBuf, JjError> {
         let root = self.run(&["workspace", "root"])?;
         Ok(PathBuf::from(root))
+    }
+
+    fn workspaces(&self) -> Result<Vec<WorkspaceInfo>, JjError> {
+        let output = self.run(&["workspace", "list", "-T", WORKSPACE_LIST_TEMPLATE])?;
+        let parsed: Result<Vec<WorkspaceInfo>, _> =
+            output.lines().map(serde_json::from_str).collect();
+        parsed.map_err(|source| JjError::ParseOutput {
+            command: "jj workspace list".to_string(),
+            source,
+        })
     }
 }
 
@@ -68,5 +142,13 @@ pub enum JjError {
         command: String,
         status: std::process::ExitStatus,
         stderr: String,
+    },
+    /// jj ran successfully but its output is not the JSONL contract tatami
+    /// pinned (jj version drift).
+    #[error("jj output for `{command}` does not match the expected JSONL contract: {source}")]
+    ParseOutput {
+        command: String,
+        #[source]
+        source: serde_json::Error,
     },
 }

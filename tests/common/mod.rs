@@ -9,6 +9,7 @@ use tempfile::TempDir;
 /// A fresh jj repo in a temp directory, cleaned up on drop.
 pub struct TempRepo {
     dir: TempDir,
+    config_path: PathBuf,
 }
 
 impl TempRepo {
@@ -28,6 +29,8 @@ impl TempRepo {
             .arg("git")
             .arg("init")
             .arg(&repo_path)
+            // The repo dir does not exist yet; run from the temp dir itself.
+            .current_dir(dir.path())
             .env("JJ_CONFIG", &config_path)
             .output()
             .expect("jj binary must be installed and on PATH");
@@ -37,7 +40,22 @@ impl TempRepo {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        Self { dir }
+        Self { dir, config_path }
+    }
+
+    fn run_jj(&self, args: &[&str]) {
+        let output = Command::new("jj")
+            .args(args)
+            .current_dir(self.dir.path().join("repo"))
+            .env("JJ_CONFIG", &self.config_path)
+            .output()
+            .expect("jj binary must be installed and on PATH");
+        assert!(
+            output.status.success(),
+            "jj {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     /// Root of the freshly created repo. Canonicalized because jj resolves
@@ -50,5 +68,17 @@ impl TempRepo {
     /// cases).
     pub fn outside_dir(&self) -> &Path {
         self.dir.path()
+    }
+
+    /// Describes the current workspace's working-copy commit.
+    pub fn describe_working_copy(&self, message: &str) {
+        self.run_jj(&["describe", "-m", message]);
+    }
+
+    /// Adds a secondary workspace as a sibling directory of the repo root.
+    pub fn add_workspace(&self, name: &str) {
+        let path = self.outside_dir().join(name);
+        let path_str = path.to_str().expect("utf-8 temp path");
+        self.run_jj(&["workspace", "add", path_str]);
     }
 }

@@ -1,4 +1,4 @@
-use tatami::{config, paths};
+use tatami::{cmd, config, jj, paths};
 
 use clap::{Parser, Subcommand};
 
@@ -17,6 +17,8 @@ enum Command {
         #[arg(default_value = "world")]
         name: String,
     },
+    /// List all workspaces with their working-copy status
+    List,
     /// Inspect tatami configuration
     Config {
         #[command(subcommand)]
@@ -37,6 +39,16 @@ fn main() {
     match cli.command {
         Command::Hello { name } => {
             println!("Hello, {name}!");
+        }
+        Command::List => {
+            let dir = std::env::current_dir().unwrap_or_else(|error| {
+                eprintln!("tatami: cannot determine the current directory: {error}");
+                std::process::exit(1);
+            });
+            cmd::list::run(&jj::CliJj::at(dir)).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
         }
         Command::Config { command } => match command {
             ConfigCommand::Show => {
