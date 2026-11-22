@@ -1,6 +1,7 @@
 //! Tatami library: CLI definition, config layering, jj adapter, commands,
-//! internal state.
+//! hook execution, approvals, internal state.
 
+pub mod approvals;
 pub mod cli;
 pub mod cmd;
 pub mod config;

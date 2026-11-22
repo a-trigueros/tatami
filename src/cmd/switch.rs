@@ -10,8 +10,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::cmd::create::{self, CreateError};
-use crate::config::schema::UserConfig;
-use crate::hook::{self, HookContext, HookError, HookPhase};
+use crate::hook::{self, ApprovalGate, HookContext, HookError, HookPhase, Hooks};
 use crate::jj::{Jj, JjError, WorkspaceInfo};
 use crate::state::{StateError, WorkspaceState};
 
@@ -25,9 +24,9 @@ pub struct SwitchArgs<'a> {
     pub name: Option<&'a str>,
     /// `--create <name>`: create the workspace, then switch to it.
     pub create: bool,
-    /// The loaded user config: `workspace-path` template and lifecycle
-    /// hooks. `None` = defaults, no hooks.
-    pub config: Option<&'a UserConfig>,
+    /// Hook sources: `workspace-path` template from the user side plus the
+    /// lifecycle hooks (user first, project second, approval-gated).
+    pub hooks: &'a Hooks<'a>,
     pub current_root: &'a Path,
     pub home: &'a Path,
 }
@@ -38,6 +37,7 @@ pub fn run(
     state: &dyn WorkspaceState,
     menu_out: &mut dyn Write,
     picker_in: &mut dyn BufRead,
+    gate: &mut dyn ApprovalGate,
 ) -> Result<PathBuf, SwitchError> {
     let workspaces = jj.workspaces()?;
     let current = workspaces
@@ -50,10 +50,11 @@ pub fn run(
             create::run(
                 jj,
                 name,
-                args.config.and_then(|c| c.workspace_path()),
+                args.hooks.user.and_then(|u| u.workspace_path()),
                 args.current_root,
                 args.home,
-                args.config,
+                args.hooks,
+                gate,
             )?;
             // Re-list: the fresh workspace must exist before we switch to it.
             let fresh = jj.workspaces()?;
@@ -74,46 +75,45 @@ pub fn run(
         // Switching in place: the previous workspace must stay the one we
         // could still come back from, and nothing moves — only post-switch
         // fires.
-        if let Some(config) = args.config {
-            hook::run_detached(
-                &HookContext {
-                    phase: HookPhase::PostSwitch,
-                    workspace: &current.name,
-                    workspace_path: current.root.as_deref().unwrap_or(args.current_root),
-                    config,
-                },
-                menu_out,
-            );
-        }
+        hook::run_detached(
+            &HookContext {
+                phase: HookPhase::PostSwitch,
+                workspace: &current.name,
+                workspace_path: current.root.as_deref().unwrap_or(args.current_root),
+                hooks: args.hooks,
+            },
+            menu_out,
+            gate,
+        );
         return destination(current);
     }
 
     // pre-switch guards the actual move (blocking); worktrunk parity: runs
     // in the source workspace.
-    if let Some(config) = args.config {
-        hook::run_blocking(&HookContext {
+    hook::run_blocking(
+        &HookContext {
             phase: HookPhase::PreSwitch,
             workspace: &current.name,
             workspace_path: args.current_root,
-            config,
-        })
-        .map_err(SwitchError::Hook)?;
-    }
+            hooks: args.hooks,
+        },
+        gate,
+    )
+    .map_err(SwitchError::Hook)?;
 
     state.set_previous_workspace(Some(&current.name))?;
     let destination = destination(&target)?;
 
-    if let Some(config) = args.config {
-        hook::run_detached(
-            &HookContext {
-                phase: HookPhase::PostSwitch,
-                workspace: &target.name,
-                workspace_path: target.root.as_deref().unwrap_or(args.current_root),
-                config,
-            },
-            menu_out,
-        );
-    }
+    hook::run_detached(
+        &HookContext {
+            phase: HookPhase::PostSwitch,
+            workspace: &target.name,
+            workspace_path: target.root.as_deref().unwrap_or(args.current_root),
+            hooks: args.hooks,
+        },
+        menu_out,
+        gate,
+    );
     Ok(destination)
 }
 
@@ -225,6 +225,7 @@ pub enum SwitchError {
 mod switch_should {
     use super::*;
     use crate::config::schema::UserConfig;
+    use crate::hook::NoGate;
     use crate::jj::WcStatus;
     use pretty_assertions::assert_eq;
     use std::cell::RefCell;
@@ -327,12 +328,13 @@ mod switch_should {
         state: &dyn WorkspaceState,
         input: &str,
     ) -> (Result<PathBuf, SwitchError>, Vec<u8>) {
+        let hooks = Hooks::none();
         switch_with(
             jj,
             SwitchArgs {
                 name,
                 create: false,
-                config: None,
+                hooks: &hooks,
                 current_root: Path::new("/repo/default"),
                 home: Path::new("/home/u"),
             },
@@ -349,7 +351,8 @@ mod switch_should {
     ) -> (Result<PathBuf, SwitchError>, Vec<u8>) {
         let mut menu = Vec::new();
         let mut picker_in = Cursor::new(input.to_string());
-        let result = run(jj, args, state, &mut menu, &mut picker_in);
+        let mut gate = NoGate;
+        let result = run(jj, args, state, &mut menu, &mut picker_in, &mut gate);
         (result, menu)
     }
 
@@ -362,12 +365,13 @@ mod switch_should {
 
     #[test]
     fn fails_when_creating_without_a_name() {
+        let hooks = Hooks::none();
         let (result, _) = switch_with(
             &repo(),
             SwitchArgs {
                 name: None,
                 create: true,
-                config: None,
+                hooks: &hooks,
                 current_root: Path::new("/repo/default"),
                 home: Path::new("/home/u"),
             },
@@ -381,15 +385,19 @@ mod switch_should {
     #[test]
     fn a_failing_pre_switch_aborts_before_touching_the_state() {
         let scratch = tempfile::tempdir().unwrap();
-        let config: UserConfig = toml::from_str("pre-switch = \"exit 1\"").unwrap();
+        let user: UserConfig = toml::from_str("pre-switch = \"exit 1\"").unwrap();
         let state = FakeState::with_previous("ws2");
+        let hooks = Hooks {
+            user: Some(&user),
+            project: None,
+        };
 
         let (result, _) = switch_with(
             &repo(),
             SwitchArgs {
                 name: Some("ws2"),
                 create: false,
-                config: Some(&config),
+                hooks: &hooks,
                 current_root: scratch.path(),
                 home: Path::new("/home/u"),
             },

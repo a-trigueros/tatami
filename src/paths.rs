@@ -96,6 +96,17 @@ impl ConfigEnv {
         dir.join("tatami")
     }
 
+    /// The worktrunk directory inside the config root — read-only fallback
+    /// target for approvals (never written to).
+    pub fn worktrunk_config_dir(&self) -> PathBuf {
+        let dir = self
+            .xdg_config_home
+            .clone()
+            .filter(|p| p.is_absolute())
+            .unwrap_or_else(|| self.home.join(".config"));
+        dir.join("worktrunk")
+    }
+
     /// The home directory the environment resolved to.
     pub fn home(&self) -> &std::path::Path {
         &self.home

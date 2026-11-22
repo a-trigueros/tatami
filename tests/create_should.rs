@@ -7,7 +7,15 @@ use std::fs;
 use std::path::Path;
 use tatami::cmd::create;
 use tatami::config::schema::UserConfig;
+use tatami::hook::{Hooks, NoGate};
 use tatami::jj::{CliJj, Jj};
+
+fn hooks_for(config: &UserConfig) -> Hooks<'_> {
+    Hooks {
+        user: Some(config),
+        project: None,
+    }
+}
 
 fn write_user_config(home: &Path, content: &str) -> UserConfig {
     let dir = home.join(".config/tatami");
@@ -28,7 +36,8 @@ fn creates_a_workspace_and_its_namesake_bookmark() {
         None,
         &repo.path(),
         Path::new("/home/u"),
-        None,
+        &Hooks::none(),
+        &mut NoGate,
     )
     .expect("create feature");
 
@@ -48,7 +57,8 @@ fn the_created_workspace_is_listed_with_a_bookmark() {
         None,
         &repo.path(),
         Path::new("/home/u"),
-        None,
+        &Hooks::none(),
+        &mut NoGate,
     )
     .unwrap();
 
@@ -78,7 +88,8 @@ fn an_in_repo_template_does_not_pollute_the_main_snapshot() {
         Some(".wt/{{ workspace }}"),
         &repo.path(),
         Path::new("/home/u"),
-        None,
+        &Hooks::none(),
+        &mut NoGate,
     )
     .expect("create with in-repo template");
     assert_eq!(dest, repo.path().join(".wt/inner"));
@@ -108,7 +119,8 @@ fn runs_the_start_hooks_in_the_new_workspace() {
         None,
         &repo.path(),
         Path::new("/home/u"),
-        Some(&config),
+        &hooks_for(&config),
+        &mut NoGate,
     )
     .expect("create with hooks");
 
@@ -130,7 +142,8 @@ fn a_failing_pre_start_rolls_back_the_fresh_workspace() {
         None,
         &repo.path(),
         Path::new("/home/u"),
-        Some(&config),
+        &hooks_for(&config),
+        &mut NoGate,
     )
     .expect_err("pre-start failure must abort");
 

@@ -1,17 +1,25 @@
+//! Proof tier: `tt switch` against a real jj repo.
+
 mod common;
 
 use common::TempRepo;
 use std::io::Cursor;
 use std::path::Path;
 use tatami::cmd::switch::{self, SwitchArgs};
+use tatami::hook::{Hooks, NoGate};
 use tatami::jj::CliJj;
 use tatami::state::{FileState, WorkspaceState};
+
+static NO_HOOKS: Hooks<'static> = Hooks {
+    user: None,
+    project: None,
+};
 
 fn args<'a>(root: &'a Path, name: Option<&'a str>, create: bool) -> SwitchArgs<'a> {
     SwitchArgs {
         name,
         create,
-        config: None,
+        hooks: &NO_HOOKS,
         current_root: root,
         home: Path::new("/home/u"),
     }
@@ -33,6 +41,7 @@ fn switches_between_workspaces_and_records_the_previous_one() {
         &state,
         &mut menu,
         &mut Cursor::new(String::new()),
+        &mut NoGate,
     )
     .expect("switch to ws2");
     let ws2_root = repo.path().parent().unwrap().join("ws2");
@@ -52,6 +61,7 @@ fn switches_between_workspaces_and_records_the_previous_one() {
         &state_from_ws2,
         &mut menu,
         &mut Cursor::new(String::new()),
+        &mut NoGate,
     )
     .expect("switch back with -");
     assert_eq!(dest, repo.path());
@@ -77,6 +87,7 @@ fn switches_in_place_without_touching_the_previous_state() {
         &state,
         &mut menu,
         &mut Cursor::new(String::new()),
+        &mut NoGate,
     )
     .unwrap();
 
@@ -86,6 +97,7 @@ fn switches_in_place_without_touching_the_previous_state() {
         &state,
         &mut menu,
         &mut Cursor::new(String::new()),
+        &mut NoGate,
     )
     .expect("switch to current workspace");
 

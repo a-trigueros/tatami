@@ -20,8 +20,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::config::schema::UserConfig;
-use crate::hook::{self, HookContext, HookError, HookPhase};
+use crate::hook::{self, ApprovalGate, HookContext, HookError, HookPhase, Hooks};
 use crate::jj::{Jj, JjError};
 
 pub fn run(
@@ -30,7 +29,8 @@ pub fn run(
     template: Option<&str>,
     current_root: &Path,
     home: &Path,
-    config: Option<&UserConfig>,
+    hooks: &Hooks<'_>,
+    gate: &mut dyn ApprovalGate,
 ) -> Result<PathBuf, CreateError> {
     validate_name(name)?;
     let destination = resolve_destination(template, name, current_root, home)?;
@@ -46,15 +46,15 @@ pub fn run(
     // (detached). A failed pre-start rolls the fresh creation back — a
     // half-created workspace must not survive.
     let hook_ctx = |phase| {
-        config.map(|config| HookContext {
+        Some(HookContext {
             phase,
             workspace: name,
             workspace_path: &destination,
-            config,
+            hooks,
         })
     };
     if let Some(ctx) = hook_ctx(HookPhase::PreStart)
-        && let Err(error) = hook::run_blocking(&ctx)
+        && let Err(error) = hook::run_blocking(&ctx, gate)
     {
         let _ = jj.workspace_forget(name);
         if destination.exists() {
@@ -65,7 +65,7 @@ pub fn run(
     if let Some(ctx) = hook_ctx(HookPhase::PostStart) {
         // No writer here: detached-hook warnings surface on the caller's
         // stderr in the switch flow; standalone creation stays quiet.
-        hook::run_detached_quiet(&ctx);
+        hook::run_detached_quiet(&ctx, gate);
     }
     Ok(destination)
 }

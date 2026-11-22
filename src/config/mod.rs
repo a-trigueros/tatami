@@ -6,10 +6,10 @@
 
 pub mod schema;
 
-pub use schema::UserConfig;
+pub use schema::{CommandSpec, ProjectConfig, UserConfig};
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
@@ -69,6 +69,52 @@ pub fn load_user_config(env: &ConfigEnv) -> Result<LoadedUserConfig, ConfigError
     })
 }
 
+/// Which config file a setting came from — shared by user and project
+/// configs (tatami's own file first, worktrunk's as fallback).
+pub use crate::paths::UserConfigSource as ConfigSource;
+
+/// The project config as loaded from the workspace.
+#[derive(Debug)]
+pub struct LoadedProjectConfig {
+    pub source: Option<ConfigSource>,
+    pub path: Option<PathBuf>,
+    pub config: ProjectConfig,
+}
+
+/// Loads the project config from `workspace_root/.config/`: tatami's file
+/// first, worktrunk's `wt.toml` as fallback. No file = defaults (the loaded
+/// value mirrors [`load_user_config`]).
+pub fn load_project_config(workspace_root: &Path) -> Result<LoadedProjectConfig, ConfigError> {
+    let dir = workspace_root.join(".config");
+    let candidates = [
+        (ConfigSource::Tatami, dir.join("tatami.toml")),
+        (ConfigSource::WorktrunkFallback, dir.join("wt.toml")),
+    ];
+    for (source, path) in candidates {
+        if !path.is_file() {
+            continue;
+        }
+        let raw = fs::read_to_string(&path).map_err(|source| ConfigError::Read {
+            path: path.clone(),
+            source,
+        })?;
+        let config = toml::from_str(&raw).map_err(|source| ConfigError::Parse {
+            path: path.clone(),
+            source,
+        })?;
+        return Ok(LoadedProjectConfig {
+            source: Some(source),
+            path: Some(path),
+            config,
+        });
+    }
+    Ok(LoadedProjectConfig {
+        source: None,
+        path: None,
+        config: ProjectConfig::default(),
+    })
+}
+
 /// `tt config show` — prints the resolved user config location, its source,
 /// and the effective workspace location template.
 pub fn config_show(env: &ConfigEnv) -> Result<(), ConfigError> {
@@ -85,6 +131,88 @@ pub fn config_show(env: &ConfigEnv) -> Result<(), ConfigError> {
         None => println!("workspace-path: not set"),
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod load_project_config_should {
+    use super::*;
+    use crate::paths::UserConfigSource as Source;
+
+    #[test]
+    fn loads_the_tatami_project_file_when_it_exists() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join(".config");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("tatami.toml"),
+            "[post-start]\nserver = \"npm run dev\"\n",
+        )
+        .unwrap();
+        fs::write(dir.join("wt.toml"), "pre-start = \"never\"\n").unwrap();
+
+        let loaded = load_project_config(root.path()).unwrap();
+
+        assert_eq!(loaded.source, Some(Source::Tatami));
+        assert!(
+            loaded
+                .config
+                .hook(crate::hook::HookPhase::PostStart)
+                .is_some(),
+            "the tatami file wins, not the worktrunk one"
+        );
+        assert!(
+            loaded
+                .config
+                .hook(crate::hook::HookPhase::PreStart)
+                .is_none(),
+            "fallback keys must not leak in"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_worktrunks_wt_toml() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join(".config");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("wt.toml"), "pre-start = \"npm install\"\n").unwrap();
+
+        let loaded = load_project_config(root.path()).unwrap();
+
+        assert_eq!(loaded.source, Some(Source::WorktrunkFallback));
+        assert!(
+            loaded
+                .config
+                .hook(crate::hook::HookPhase::PreStart)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn uses_defaults_when_no_project_file_exists() {
+        let root = tempfile::tempdir().unwrap();
+
+        let loaded = load_project_config(root.path()).unwrap();
+
+        assert_eq!(loaded.source, None);
+        assert_eq!(loaded.path, None);
+    }
+
+    #[test]
+    fn fails_when_a_project_file_is_invalid() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join(".config");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("tatami.toml"), "[[[ nope\n").unwrap();
+        let dir_wt = root.path().join(".config");
+        fs::write(dir_wt.join("wt.toml"), "pre-start = \"never\"\n").unwrap();
+
+        let error = load_project_config(root.path()).unwrap_err();
+
+        assert!(
+            matches!(error, ConfigError::Parse { .. }),
+            "invalid project file must not silently fall back: {error:?}"
+        );
+    }
 }
 
 #[cfg(test)]

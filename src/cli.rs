@@ -6,6 +6,9 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(name = "tatami", version, about = "Tatami CLI")]
 pub struct Cli {
+    /// Skip approval prompts for project hooks (consent for this invocation)
+    #[arg(long, short = 'y', global = true)]
+    pub yes: bool,
     #[command(subcommand)]
     pub command: Command,
 }

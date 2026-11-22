@@ -229,7 +229,7 @@ Notes épinglées (jj 0.47.1 + shells) :
   `compinit -d …/tatami/zcompdump` (flag: cost = léger coût de startup
   dupliqué, when = premier retour utilisateur).
 
-### M2 — create + remove (en cours, 2026-11-21)
+### M2 — create + remove ✅ (2026-11-22)
 
 - [x] `tt switch --create <nom>` (parité worktrunk, pas de `tt create`
       autonome) : `jj workspace add --name` + bookmark homonyme (`jj bookmark
@@ -274,27 +274,36 @@ Notes épinglées (jj 0.47.1 + shells) :
         routage vers `state/logs/` en M4), variables `{{ workspace }}` /
         `{{ workspace_path }}` seulement (minijinja complet M4), via `sh -c`
         (unix ; Windows plus tard)
-      - **Hooks v1 = config user uniquement.** Le système d'approbation n'a
-        de sens que pour des hooks partagés via la config projet
-        (`.config/tatami.toml` → fallback `.config/wt.toml`) → slice dédiée
-        ensuite : loader config projet + `[projects."host/owner/repo"]` +
-        `~/.config/tatami/approvals.toml` (fallback worktrunk) + prompt
-        d'approbation + `--yes`
+      - **Config projet + approbations : FAIT** — `.config/tatami.toml` →
+        fallback `.config/wt.toml` (le fichier tatami gagne, pas de mélange) ;
+        hooks = user d'abord puis projet (accumulation sourcée) ; chaque
+        commande de hook projet est soumise au gate **avant que la moindre
+        commande projet ne tourne** ; clé = (racine hôte canonique = projet,
+        phase, template brut — changer la commande ou déplacer le repo
+        ré-arme l'approbation, comportement worktrunk) ; `~/.config/tatami/
+        approvals.toml` (écriture toujours côté tatami), lecture avec
+        fallback worktrunk ; `--yes` global contourne sans enregistrer ;
+        EOF/prompt refusé = fail-closed (pre-* aborte, post-* saute)
+        - le gate **possède** ses canaux IO (Box sur les handles std) et
+          voyage séparé de `Hooks` — sinon deadlock : le lock interne de
+          `Stdin` n'est **pas** réentrant (moralité : jamais `.lock()` tenu
+          en travers d'un second lecteur du même flux)
+        - raccourci : identité projet = chemin (l'identité remote
+          `host/owner/repo` et la table `[projects]` du user config restent
+          à typer — clés unparsed en attendant) ; pas encore de
+          `tt config approvals add` (les CI passent par `--yes`)
       - question ouverte à sourcer avant la config projet : le statut exact de
         la clé `env` dans les tables de hooks worktrunk (variable
         d'environnement vs commande nommée)
 
 ### Prochaine étape
 
-1. **Config projet + approbations** (clôture M2) : `.config/tatami.toml` →
-   fallback `.config/wt.toml`, hooks projet soumis à approbation
-   (`~/.config/tatami/approvals.toml` → fallback worktrunk), per-project
-   overrides `[projects."host/owner/repo"]`, prompt + `--yes`
-2. **M3 — merge + rebase + step** : workflow `tt merge` jj-isé (résolution du
+1. **M3 — merge + rebase + step** : workflow `tt merge` jj-isé (résolution du
    bookmark principal, squash/rebase/ff, push), `tt rebase`, `tt step`
    (commit, squash, rebase, push, diff, for-each, prune, `copy-ignored`)
-3. **M4 — finition** : aliases, minijinja complet, `--format json`,
-   `tt config state` (+ purge du trash), logs des hooks, complétions étendues
+2. **M4 — finition** : aliases, minijinja complet (variables/filtres hooks +
+   `workspace-path`), `--format json`, `tt config state` (+ purge du trash),
+   logs des hooks détachés, `tt config approvals add`, complétions étendues
 
 ### Contrats jj épinglés pour `tt list` (jj 0.47.1, docs templates v0.47.1)
 

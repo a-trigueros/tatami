@@ -1,6 +1,6 @@
 use clap::Parser;
 use tatami::cli::{Cli, Command, ConfigCommand, ShellCommand};
-use tatami::{cmd, config, jj, paths, state};
+use tatami::{approvals, cmd, config, hook, jj, paths, state};
 
 fn main() {
     let cli = Cli::parse();
@@ -32,6 +32,26 @@ fn main() {
                 eprintln!("tatami: {error}");
                 std::process::exit(1);
             });
+            let project_config = config::load_project_config(&dir).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let approvals = approvals::Approvals::load(&paths_env).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let project_id = state::host_root(&dir)
+                .unwrap_or_else(|error| {
+                    eprintln!("tatami: {error}");
+                    std::process::exit(1);
+                })
+                .display()
+                .to_string();
+            let mut gate = approvals::InteractiveGate::interactive(approvals, project_id, cli.yes);
+            let hooks = hook::Hooks {
+                user: Some(&user_config.config),
+                project: Some(&project_config.config),
+            };
             let adapter = jj::CliJj::at(dir.clone());
             let state = state::FileState::for_workspace(&dir).unwrap_or_else(|error| {
                 eprintln!("tatami: {error}");
@@ -40,7 +60,7 @@ fn main() {
             let args = cmd::switch::SwitchArgs {
                 name: name.as_deref(),
                 create,
-                config: Some(&user_config.config),
+                hooks: &hooks,
                 current_root: &dir,
                 home: paths_env.home(),
             };
@@ -48,8 +68,11 @@ fn main() {
                 &adapter,
                 args,
                 &state,
-                &mut std::io::stderr().lock(),
-                &mut std::io::stdin().lock(),
+                // Handles, not locks: the interactive approval gate reads the
+                // same streams and Stdin's internal lock is not reentrant.
+                &mut std::io::stderr(),
+                &mut std::io::BufReader::new(std::io::stdin()),
+                &mut gate,
             )
             .unwrap_or_else(|error| {
                 eprintln!("tatami: {error}");
@@ -73,6 +96,26 @@ fn main() {
                 eprintln!("tatami: {error}");
                 std::process::exit(1);
             });
+            let project_config = config::load_project_config(&dir).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let approvals = approvals::Approvals::load(&paths_env).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let project_id = state::host_root(&dir)
+                .unwrap_or_else(|error| {
+                    eprintln!("tatami: {error}");
+                    std::process::exit(1);
+                })
+                .display()
+                .to_string();
+            let mut gate = approvals::InteractiveGate::interactive(approvals, project_id, cli.yes);
+            let hooks = hook::Hooks {
+                user: Some(&user_config.config),
+                project: Some(&project_config.config),
+            };
             let state_dir = state::state_dir(&dir).unwrap_or_else(|error| {
                 eprintln!("tatami: {error}");
                 std::process::exit(1);
@@ -84,10 +127,11 @@ fn main() {
                     delete_bookmark,
                     now_millis: now_millis(),
                     state_dir: &state_dir,
-                    config: Some(&user_config.config),
+                    hooks: &hooks,
                     caller_root: &dir,
                 },
-                &mut std::io::stderr().lock(),
+                &mut std::io::stderr(),
+                &mut gate,
             )
             .unwrap_or_else(|error| {
                 eprintln!("tatami: {error}");

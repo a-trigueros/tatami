@@ -22,6 +22,43 @@ pub enum CommandSpec {
     Pipeline(Vec<BTreeMap<String, String>>),
 }
 
+/// The shared, checked-in project config (`.config/tatami.toml`, fallback
+/// `.config/wt.toml`). Deliberately narrower than [`UserConfig`]: no
+/// `workspace-path` — the repository does not dictate personal layout. What
+/// it carries is what makes approvals necessary: shared hooks.
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct ProjectConfig {
+    #[serde(rename = "pre-switch")]
+    pre_switch: Option<CommandSpec>,
+    #[serde(rename = "post-switch")]
+    post_switch: Option<CommandSpec>,
+    #[serde(rename = "pre-start")]
+    pre_start: Option<CommandSpec>,
+    #[serde(rename = "post-start")]
+    post_start: Option<CommandSpec>,
+    #[serde(rename = "pre-remove")]
+    pre_remove: Option<CommandSpec>,
+    #[serde(rename = "post-remove")]
+    post_remove: Option<CommandSpec>,
+    /// Sections tatami does not execute yet (aliases, list, forge, step…).
+    #[serde(flatten)]
+    unparsed: BTreeMap<String, toml::Value>,
+}
+
+impl ProjectConfig {
+    pub fn hook(&self, phase: crate::hook::HookPhase) -> Option<&CommandSpec> {
+        match phase {
+            crate::hook::HookPhase::PreSwitch => self.pre_switch.as_ref(),
+            crate::hook::HookPhase::PostSwitch => self.post_switch.as_ref(),
+            crate::hook::HookPhase::PreStart => self.pre_start.as_ref(),
+            crate::hook::HookPhase::PostStart => self.post_start.as_ref(),
+            crate::hook::HookPhase::PreRemove => self.pre_remove.as_ref(),
+            crate::hook::HookPhase::PostRemove => self.post_remove.as_ref(),
+        }
+    }
+}
+
 /// The user config file's content.
 #[derive(Debug, Default, Clone, PartialEq, Deserialize)]
 #[serde(default)]

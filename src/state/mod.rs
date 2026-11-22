@@ -79,17 +79,13 @@ impl WorkspaceState for FileState {
     }
 }
 
-/// Absolute directory where tatami's repo-global state lives for the repo
-/// reachable from `workspace_root`.
-///
-/// `workspace_root` must be an existing, canonical workspace root — the shape
-/// jj itself reports (`jj workspace root` resolves symlinks). Non-canonical
-/// inputs would leak symlink differences into the output.
-pub fn state_dir(workspace_root: &Path) -> Result<PathBuf, StateError> {
+/// The workspace hosting the shared repo storage, reachable from
+/// `workspace_root`. Stable identity for the whole project across workspaces
+/// (state, approvals).
+pub fn host_root(workspace_root: &Path) -> Result<PathBuf, StateError> {
     let repo_probe = workspace_root.join(".jj").join("repo");
     if repo_probe.is_dir() {
-        // This workspace hosts the shared storage.
-        return Ok(workspace_root.join(".jj").join("tatami"));
+        return Ok(workspace_root.to_path_buf());
     }
     if !repo_probe.is_file() {
         return Err(StateError::NoRepoStorage {
@@ -109,13 +105,23 @@ pub fn state_dir(workspace_root: &Path) -> Result<PathBuf, StateError> {
             path: repo_probe.clone(),
             source,
         })?;
-    let host_root = storage
+    storage
         .parent()
         .and_then(|jj_dir| jj_dir.parent())
+        .map(Path::to_path_buf)
         .ok_or_else(|| StateError::MalformedPointer {
             path: repo_probe.clone(),
-        })?;
-    Ok(host_root.join(".jj").join("tatami"))
+        })
+}
+
+/// Absolute directory where tatami's repo-global state lives for the repo
+/// reachable from `workspace_root`.
+///
+/// `workspace_root` must be an existing, canonical workspace root — the shape
+/// jj itself reports (`jj workspace root` resolves symlinks). Non-canonical
+/// inputs would leak symlink differences into the output.
+pub fn state_dir(workspace_root: &Path) -> Result<PathBuf, StateError> {
+    Ok(host_root(workspace_root)?.join(".jj").join("tatami"))
 }
 
 /// True when `workspace_root` hosts the shared repo storage — the workspace
