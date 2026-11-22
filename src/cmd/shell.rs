@@ -4,14 +4,14 @@
 //! wrapper `cd`s to it) and sources the completions dynamically. The user
 //! pastes the block into their rc — or evals it:
 //! `eval "$(tatami config shell init zsh)"`.
+//!
+//! The completion scripts are hand-written (not clap_complete): they must
+//! offer *dynamic* candidates — workspaces for switch/remove, bookmarks for
+//! merge/rebase — by calling the hidden `tatami __complete <target>`.
 
 use std::path::Path;
 
-use clap::CommandFactory;
-use clap_complete::generate;
 use thiserror::Error;
-
-use crate::cli::Cli;
 
 /// The shells tatami integrates with today.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,25 +132,57 @@ fn integration_block(shell: Shell) -> String {
     }
 }
 
-/// clap_complete output is UTF-8 by construction.
+/// The completion script for `shell` — hand-written so candidates can be
+/// dynamic: `switch`/`remove` complete workspace names and `merge`/`rebase`
+/// complete bookmark names via the hidden `tatami __complete <target>`.
+/// Registered for both the binary and the `tt` wrapper.
 fn completion_script(shell: Shell) -> String {
-    let mut command = Cli::command();
-    let mut buf: Vec<u8> = Vec::new();
     match shell {
-        Shell::Zsh => generate(clap_complete::shells::Zsh, &mut command, "tatami", &mut buf),
-        Shell::Bash => generate(
-            clap_complete::shells::Bash,
-            &mut command,
-            "tatami",
-            &mut buf,
-        ),
+        Shell::Zsh => r#"#compdef tatami tt
+# tatami completions — dynamic (workspaces, bookmarks). Regenerate with
+# `tatami config shell init`; place this after `compinit` in your rc.
+_tatami() {
+  if (( CURRENT == 2 )); then
+    local -a cmds=(list ls switch merge rebase remove step config)
+    _describe -t tatami-cmds command cmds
+    return
+  fi
+  local sub="${words[2]}" candidates
+  case "$sub" in
+    switch|remove|merge|rebase)
+      candidates=("${(f)$(command tatami __complete "$sub" 2>/dev/null)}")
+      (( ${#candidates} )) && _describe -t tatami-candidates "$sub" candidates
+      ;;
+  esac
+}
+(( $+functions[compdef] )) && compdef _tatami tatami tt
+"#
+        .to_string(),
+        Shell::Bash => r#"# tatami completions — dynamic (workspaces, bookmarks). Regenerate with
+# `tatami config shell init`.
+_tatami() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  if [ "$COMP_CWORD" -eq 1 ]; then
+    COMPREPLY=($(compgen -W "list ls switch merge rebase remove step config" -- "$cur"))
+    return
+  fi
+  case "${COMP_WORDS[1]}" in
+    switch|remove|merge|rebase)
+      COMPREPLY=($(compgen -W "$(command tatami __complete "${COMP_WORDS[1]}" 2>/dev/null)" -- "$cur"))
+      ;;
+  esac
+}
+complete -F _tatami tatami tt 2>/dev/null
+"#
+        .to_string(),
     }
-    String::from_utf8(buf).expect("clap_complete emits UTF-8")
 }
 
 #[cfg(test)]
 mod shell_should {
     use super::*;
+    use crate::cli::Cli;
+    use clap::CommandFactory as _;
 
     #[test]
     fn parses_shell_names_and_interpreter_paths() {
@@ -266,15 +298,47 @@ mod shell_should {
                 .unwrap_or_else(|error| {
                     panic!("the block references `{command}`, which the CLI rejects: {error}");
                 });
+
+            // The candidates command the completion script calls.
+            Cli::command()
+                .try_get_matches_from(["tatami", "__complete", label])
+                .unwrap_or_else(|error| {
+                    panic!("__complete must accept `{label}`: {error}");
+                });
         }
     }
 
     #[test]
-    fn generates_completion_scripts_for_both_shells() {
+    fn completion_scripts_wire_dynamic_candidates_through_the_hidden_command() {
+        for shell in [Shell::Zsh, Shell::Bash] {
+            let script = completion_script(shell);
+            assert!(
+                script.contains("tatami __complete"),
+                "{:?} script must call the hidden candidates command: {script:?}",
+                shell.label()
+            );
+            assert!(
+                script.contains("switch|remove|merge|rebase"),
+                "{:?} script must complete workspaces and bookmarks: {script:?}",
+                shell.label()
+            );
+        }
+    }
+
+    #[test]
+    fn completions_register_for_both_the_binary_and_the_tt_wrapper() {
         let zsh = completion_script(Shell::Zsh);
         let bash = completion_script(Shell::Bash);
 
-        assert!(zsh.contains("#compdef tatami"), "zsh: {zsh:?}");
+        assert!(zsh.contains("#compdef tatami tt"), "zsh: {zsh:?}");
+        assert!(
+            zsh.contains("compdef _tatami tatami tt"),
+            "the tt wrapper must complete too: {zsh:?}"
+        );
         assert!(bash.contains("_tatami()"), "bash: {bash:?}");
+        assert!(
+            bash.contains("complete -F _tatami tatami tt"),
+            "the tt wrapper must complete too: {bash:?}"
+        );
     }
 }

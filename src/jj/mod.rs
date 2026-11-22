@@ -32,6 +32,9 @@ pub trait Jj {
     /// removal of the directory is the caller's decision.
     fn workspace_forget(&self, name: &str) -> Result<(), JjError>;
 
+    /// Abandons the commits matching a revset.
+    fn abandon(&self, revset: &str) -> Result<(), JjError>;
+
     /// Deletes a local bookmark. Deleting an absent bookmark succeeds in jj
     /// (warning only); the returned bool says whether one was actually
     /// deleted. shortcut: detected via jj's stderr string
@@ -213,6 +216,11 @@ impl Jj for CliJj {
 
     fn workspace_forget(&self, name: &str) -> Result<(), JjError> {
         self.run(&["workspace", "forget", name])?;
+        Ok(())
+    }
+
+    fn abandon(&self, revset: &str) -> Result<(), JjError> {
+        self.run(&["abandon", revset])?;
         Ok(())
     }
 

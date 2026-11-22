@@ -197,6 +197,10 @@ pub(crate) fn forget_and_trash(
     state_dir: &Path,
     now_millis: u64,
 ) -> Result<DirectoryOutcome, RemoveError> {
+    // Abandon the working-copy commit FIRST (the revset needs the workspace
+    // to still exist): `jj workspace forget` does not abandon it (pinned
+    // 0.47.1), leaving an empty `(no description set)` change forever.
+    jj.abandon(&format!("{name}@"))?;
     jj.workspace_forget(name)?;
     match root {
         Some(root) if root.exists() => Ok(DirectoryOutcome::Trashed(trash(
@@ -216,6 +220,7 @@ mod remove_should {
     struct FakeJj {
         workspaces: Vec<WorkspaceInfo>,
         forget_calls: RefCell<Vec<String>>,
+        abandon_calls: RefCell<Vec<String>>,
         bookmark_delete_calls: RefCell<Vec<String>>,
         bookmark_delete_result: bool,
     }
@@ -224,6 +229,7 @@ mod remove_should {
             Self {
                 workspaces,
                 forget_calls: RefCell::new(Vec::new()),
+                abandon_calls: RefCell::new(Vec::new()),
                 bookmark_delete_calls: RefCell::new(Vec::new()),
                 bookmark_delete_result: true,
             }
@@ -249,6 +255,11 @@ mod remove_should {
 
         fn workspace_forget(&self, name: &str) -> Result<(), JjError> {
             self.forget_calls.borrow_mut().push(name.to_string());
+            Ok(())
+        }
+
+        fn abandon(&self, revset: &str) -> Result<(), JjError> {
+            self.abandon_calls.borrow_mut().push(revset.to_string());
             Ok(())
         }
 

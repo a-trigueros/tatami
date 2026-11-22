@@ -33,6 +33,7 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// List all workspaces with their working-copy status
+    #[command(alias = "ls")]
     List {
         /// Output format
         #[arg(long, value_enum, default_value = "text")]
@@ -59,6 +60,12 @@ pub enum Command {
     Rebase {
         /// Target bookmark; defaults to main, then master, then trunk
         target: Option<String>,
+    },
+    /// (hidden) Print dynamic completion candidates for the completion scripts
+    #[command(name = "__complete", hide = true)]
+    Complete {
+        /// Which command to complete: switch, remove, merge, rebase
+        target: String,
     },
     /// Integrate the current workspace into the target bookmark (rebase if
     /// diverged, then fast-forward)

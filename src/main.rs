@@ -85,6 +85,19 @@ fn main() {
             });
             println!("{}", destination.display());
         }
+        Command::Complete { target } => {
+            let dir = std::env::current_dir().unwrap_or_else(|error| {
+                eprintln!("tatami: cannot determine the current directory: {error}");
+                std::process::exit(1);
+            });
+            // Completion must never spam the user: on error, stay silent and
+            // offer no candidates.
+            let candidates = cmd::complete::run(&jj::CliJj::at(dir), &target)
+                .unwrap_or_else(|_| std::process::exit(0));
+            for name in candidates {
+                println!("{name}");
+            }
+        }
         Command::Remove {
             name,
             keep_bookmark,

@@ -206,6 +206,38 @@ fn switch_create_prints_the_new_workspace_path_on_stdout() {
     assert!(expected.exists(), "the workspace must have been created");
 }
 
+/// The completion scripts query the hidden candidates command at completion
+/// time — workspaces for switch (all) and remove (current excluded).
+#[test]
+fn complete_serves_workspace_names_for_the_scripts() {
+    let repo = TempRepo::init();
+    repo.add_workspace("ws2");
+
+    let run_complete = |target: &str| {
+        Command::new(env!("CARGO_BIN_EXE_tatami"))
+            .args(["__complete", target])
+            .current_dir(repo.path())
+            .env("JJ_CONFIG", repo.jj_config_path())
+            .output()
+            .expect("run __complete")
+    };
+
+    let stdout = String::from_utf8_lossy(&run_complete("switch").stdout);
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["default", "ws2"],
+        "switch completes every workspace, sorted"
+    );
+
+    // Standing in the host workspace, `remove` must not offer it.
+    let stdout = String::from_utf8_lossy(&run_complete("remove").stdout);
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec!["ws2"],
+        "remove excludes the current workspace"
+    );
+}
+
 /// `tt <other>` passes through to the binary (no cd side effects).
 #[test]
 fn the_wrapper_passes_other_commands_through() {

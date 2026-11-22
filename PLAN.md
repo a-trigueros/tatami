@@ -26,6 +26,7 @@ Résolution : `~/.config/tatami/config.toml`, sinon fallback
 | 7 | Env `WORKTRUNK_*` | non acceptée ; tatami n'expose que `TATAMI_*` (même convention d'imbrication `__`) |
 | 8 | Intégration shell (révisé 2026-11-22) | `tatami config shell init` **imprime** le bloc à coller dans le rc — tatami n'écrit jamais dans les rc ni ne gère des fichiers de complétion ; le wrapper intercepte `switch` **et** `merge`, complétions branchées par `source <(tatami config completion <sh>)` (zsh : bloc à placer après `compinit`) |
 | 9 | Templates (révisé 2026-11-22) | `workspace-path` rendu en **strict** (variable inconnue = erreur, jamais vide) avec vars `workspace`/`branch`/`repo` ; hooks et aliases restent lenient jusqu'à la parité complète des vars worktrunk (M5). Le layout par défaut et les entrées de trash sanitize les noms : `feat/test` = **un** répertoire (`repo.feat-test`), jamais un sous-chemin |
+| 10 | Complétion dynamique (2026-11-22) | scripts zsh/bash **faits main** (pas clap_complete, dépendance retirée) : `switch`/`remove` → workspaces (courant exclu pour remove), `merge`/`rebase` → bookmarks, via la commande cachée `tatami __complete <cible>` (nom explicite requis — clap dériverait `complete`) ; enregistrée pour `tatami` **et** le wrapper `tt` ; échec = silence (candidates vides) |
 
 ## 3. Surface CLI cible (mapping `wt` → `tt`)
 
@@ -150,6 +151,15 @@ Chaque jalon livrera un binaire utilisable.
 
 ## 8. Points d'attention jj (mémo technique)
 
+- **forget n'abandonne pas le `@`** (0.47.1, vérifié) : après
+  `jj workspace forget`, la working-copy commit du workspace supprimé reste
+  visible comme change vide — tatami fait `jj abandon "<nom>@"` avant le
+  forget (le revset à slash, ex. `feat/test@`, se résout tel quel).
+- **abandon supprime les bookmarks exactement posés sur le commit abandonné**
+  (« Deleted bookmarks », 0.47.1) : pour un workspace fraîchement créé, le
+  bookmark homonyme peut donc disparaître dès l'abandon — le booléen de
+  `bookmark_delete` de tatami est sous-estimé dans ce cas, seul le *résultat*
+  (bookmark absent) fait foi.
 - **Stale** : réécrire `nom@` depuis un autre workspace rend le premier obsolète ;
   `tt switch` doit détecter et proposer `jj workspace update-stale`.
 - Pas de branche à poser par workspace : un commit `nom@` par workspace,

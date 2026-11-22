@@ -106,7 +106,7 @@ fn deletes_an_existing_namesake_bookmark_when_asked() {
     let jj = CliJj::at(repo.path().clone());
     let state_dir = tempfile::tempdir().unwrap();
     let hooks = Hooks::none();
-    let report = remove::run(
+    remove::run(
         &jj,
         remove_args("ws2", true, &state_dir.path().join(".jj/tatami"), &hooks),
         &mut Vec::new(),
@@ -114,7 +114,9 @@ fn deletes_an_existing_namesake_bookmark_when_asked() {
     )
     .expect("remove ws2 with bookmark");
 
-    assert!(report.bookmark_deleted);
+    // The bookmark may be deleted by tatami's explicit call OR by jj's
+    // abandon (abandoning a commit deletes bookmarks pointing exactly at
+    // it); either way the outcome is: gone.
     let bookmarks = repo.capture_jj(&["bookmark", "list"]);
     assert!(
         !bookmarks.contains("ws2"),
@@ -158,6 +160,18 @@ fn removes_a_workspace_whose_name_contains_a_slash() {
         .join(format!("{repo_name}.feat-test"));
     assert!(ws_root.exists(), "default layout dir must exist");
 
+    // forget(0.47.1) does NOT abandon the removed workspace's working-copy
+    // commit: without the explicit abandon, an empty change lingers forever.
+    let ws_at = repo.capture_jj(&[
+        "log",
+        "--no-graph",
+        "-T",
+        "change_id.short()",
+        "-r",
+        "feat/test@",
+    ]);
+    assert!(!ws_at.is_empty(), "the ws @ must exist before remove");
+
     let jj = CliJj::at(repo.path().clone());
     let state_dir = tempfile::tempdir().unwrap();
     let hooks = Hooks::none();
@@ -186,6 +200,11 @@ fn removes_a_workspace_whose_name_contains_a_slash() {
     assert!(
         !bookmarks.contains("feat/test"),
         "the namesake bookmark must be deleted by default: {bookmarks:?}"
+    );
+    let log = repo.capture_jj(&["log", "--no-graph", "-T", "change_id.short()"]);
+    assert!(
+        !log.contains(ws_at.trim()),
+        "the removed workspace's @ must be abandoned: {log:?} still has {ws_at:?}"
     );
 }
 

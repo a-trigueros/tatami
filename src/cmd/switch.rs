@@ -268,6 +268,10 @@ mod switch_should {
             panic!("FakeJj::workspace_forget is not exercised by switch tests")
         }
 
+        fn abandon(&self, _revset: &str) -> Result<(), JjError> {
+            panic!("FakeJj::abandon is not exercised by switch tests")
+        }
+
         fn bookmark_delete(&self, _name: &str) -> Result<bool, JjError> {
             panic!("FakeJj::bookmark_delete is not exercised by switch tests")
         }

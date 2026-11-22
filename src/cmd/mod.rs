@@ -5,6 +5,7 @@
 //! by the adapter's integration tests.
 
 pub mod alias;
+pub mod complete;
 pub mod copy_ignored;
 pub mod create;
 pub mod list;

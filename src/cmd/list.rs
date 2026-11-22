@@ -337,6 +337,10 @@ mod format_should {
                 unimplemented!()
             }
 
+            fn abandon(&self, _revset: &str) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
             fn bookmark_delete(&self, _name: &str) -> Result<bool, JjError> {
                 unimplemented!()
             }

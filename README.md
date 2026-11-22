@@ -10,7 +10,7 @@ hooks, aliases, approbations et intégration shell.
 ```text
 tt switch feature          # cd dans le workspace `feature` (le wrapper fait le cd)
 tt switch -c login         # -c = --create : crée le workspace + bookmark homonyme, puis cd
-tt list                    # tableau des workspaces (statuts jj)
+tt ls                      # = tt list : tableau des workspaces (statuts jj)
 tt merge                   # intègre le workspace courant dans main (rebase + ff)
 tt remove login            # oublie + met à la poubelle + supprime le bookmark homonyme
                            # (--keep-bookmark pour le conserver)
@@ -47,6 +47,11 @@ Le wrapper `tt` intercepte `switch` et `merge` (les deux impriment le chemin de
 destination ; le wrapper fait le `cd`) et passe tout le reste au binaire. Sans
 wrapper, `tt switch` imprime le chemin sans déplacer personne. En zsh, placez
 le bloc après `compinit` pour que les complétions s'enregistrent.
+
+Complétion **dynamique** : `switch`/`remove` complètent les noms de workspaces,
+`merge`/`rebase` les bookmarks — les scripts appellent la commande cachée
+`tatami __complete <cible>` à chaque tabulation (workspaces pour `remove`
+excluant le courant). Enregistrée pour `tatami` **et** le wrapper `tt`.
 
 Sur macOS, `zsh -i -c` ne source pas `~/.zshrc` : tester dans un terminal
 interactif, pas via `-c`.
