@@ -99,7 +99,13 @@ fn resolve_destination(
             let mut vars = crate::template::TemplateVars::new();
             vars.insert("workspace", name.to_string())
                 .insert("branch", name.to_string());
-            let expanded = crate::template::render(template, &vars)?;
+            // Worktrunk parity: `repo` is the repository directory name.
+            if let Some(repo) = current_root.file_name() {
+                vars.insert("repo", repo.to_string_lossy().to_string());
+            }
+            // Strict: a wrong path is a real hazard — `~/factory/{{ repo }}`
+            // must fail loudly, not build `~/factory//name`.
+            let expanded = crate::template::render_strict(template, &vars)?;
             match expanded.strip_prefix("~/") {
                 Some(rest) => home.join(rest),
                 None => PathBuf::from(expanded),
@@ -118,7 +124,14 @@ fn resolve_destination(
                     .ok_or_else(|| CreateError::UnresolvableDestination {
                         root: current_root.to_path_buf(),
                     })?;
-            sibling.join(format!("{}.{name}", repo_name.to_string_lossy()))
+            // Worktrunk's default layout sanitizes the name: the workspace
+            // `feat/test` is one directory `repo.feat-test`, not a nested
+            // `repo.feat/test`.
+            sibling.join(format!(
+                "{}.{}",
+                repo_name.to_string_lossy(),
+                crate::template::sanitize(name)
+            ))
         }
     };
 
@@ -228,17 +241,34 @@ mod resolve_destination_should {
     }
 
     #[test]
-    fn renders_unknown_variables_as_empty() {
-        // minijinja lenient mode: `{{ owner }}` (worktrunk's variable, not
-        // provided by tatami yet) renders empty rather than failing.
-        let dest = resolve_destination(
+    fn unknown_variables_fail_the_path_template_instead_of_building_a_wrong_path() {
+        // Strict mode: `{{ owner }}` (worktrunk's variable, not provided by
+        // tatami) must fail loudly — a silent empty segment once built
+        // `~/factory//name` from `~/factory/{{ repo }}/…`.
+        let error = resolve_destination(
             Some(".wt/{{ owner }}-{{ workspace }}"),
             "feature",
             &root(),
             Path::new("/home/u"),
         )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("undefined"),
+            "expected an undefined-variable error: {error}"
+        );
+    }
+
+    #[test]
+    fn provides_repo_as_the_repository_directory_name() {
+        // Worktrunk-parity variable: `~/factory/{{ repo }}/{{ workspace }}`.
+        let dest = resolve_destination(
+            Some("~/factory/{{ repo }}/{{ workspace }}"),
+            "feature",
+            &root(),
+            Path::new("/home/u"),
+        )
         .unwrap();
-        assert_eq!(dest, PathBuf::from("/repo/main/.wt/-feature"));
+        assert_eq!(dest, PathBuf::from("/home/u/factory/main/feature"));
     }
 
     #[test]

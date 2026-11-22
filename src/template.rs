@@ -44,12 +44,30 @@ pub enum TemplateError {
     UnsupportedFilter { filter: String },
 }
 
-/// Renders `template` with `vars`. Missing variables render as empty
-/// (lenient — worktrunk templates reference variables tatami does not
-/// provide yet, like `owner` or `remote_repo`).
+/// Renders `template` with `vars` **leniently**: missing variables render as
+/// empty. Reserved for hooks and aliases — a silently-empty hook command is
+/// annoying but harmless, and worktrunk hook configs reference variables
+/// tatami does not provide yet (`owner`, `remote_repo`, …); failing them
+/// would block the whole toolchain.
 pub fn render(template: &str, vars: &TemplateVars) -> Result<String, TemplateError> {
+    render_with(template, vars, minijinja::UndefinedBehavior::Lenient)
+}
+
+/// Renders `template` with `vars`, failing on any undefined variable.
+/// Required for `workspace-path`: a silently-empty segment builds a wrong
+/// path (real case: worktrunk's `{{ repo }}` rendered empty, creating
+/// `~/factory//name`).
+pub fn render_strict(template: &str, vars: &TemplateVars) -> Result<String, TemplateError> {
+    render_with(template, vars, minijinja::UndefinedBehavior::Strict)
+}
+
+fn render_with(
+    template: &str,
+    vars: &TemplateVars,
+    undefined: minijinja::UndefinedBehavior,
+) -> Result<String, TemplateError> {
     let mut environment = Environment::new();
-    environment.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
+    environment.set_undefined_behavior(undefined);
     environment.add_filter("sanitize", sanitize_filter);
     environment.add_filter("sanitize_db", sanitize_db_filter);
     environment.add_filter(
@@ -76,6 +94,12 @@ pub fn render(template: &str, vars: &TemplateVars) -> Result<String, TemplateErr
 
 /// Worktrunk parity: only path separators become `-`.
 fn sanitize_filter(value: String) -> String {
+    sanitize(&value)
+}
+
+/// The `sanitize` filter as a plain function — shared with consumers that
+/// sanitize names outside templates (trash entries).
+pub(crate) fn sanitize(value: &str) -> String {
     value.replace(['/', '\\'], "-")
 }
 

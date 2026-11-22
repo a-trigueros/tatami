@@ -43,7 +43,7 @@ pub enum Command {
         /// Workspace name, or `-` for the previous one; omitted for the picker
         name: Option<String>,
         /// Create the workspace (and its namesake bookmark) before switching
-        #[arg(long)]
+        #[arg(short = 'c', long)]
         create: bool,
     },
     /// Forget a workspace and move its directory to the tatami trash
@@ -187,4 +187,21 @@ pub enum ShellCommand {
         /// Target shell (zsh, bash)
         shell: String,
     },
+}
+
+#[cfg(test)]
+mod cli_should {
+    use super::*;
+
+    #[test]
+    fn switch_accepts_c_as_the_short_form_of_create() {
+        let cli = Cli::try_parse_from(["tatami", "switch", "-c", "toto"]).expect("parse -c");
+        match cli.command {
+            Command::Switch { name, create } => {
+                assert!(create, "-c must set create");
+                assert_eq!(name.as_deref(), Some("toto"));
+            }
+            other => panic!("expected Switch, got: {other:?}"),
+        }
+    }
 }

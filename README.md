@@ -9,7 +9,7 @@ hooks, aliases, approbations et intégration shell.
 
 ```text
 tt switch feature          # cd dans le workspace `feature` (le wrapper fait le cd)
-tt switch --create login   # crée le workspace + bookmark homonyme, puis cd
+tt switch -c login         # -c = --create : crée le workspace + bookmark homonyme, puis cd
 tt list                    # tableau des workspaces (statuts jj)
 tt merge                   # intègre le workspace courant dans main (rebase + ff)
 tt remove login            # oublie + met à la poubelle
@@ -68,8 +68,11 @@ note = "jj describe -m '{{ args }}'"
 pre-start = "cp .env.example .env"   # soumis à approbation
 ```
 
-- variables : `{{ workspace }}`, `{{ workspace_path }}`, `{{ repo_path }}`,
-  `{{ cwd }}`, `{{ args }}` (aliases) ; filtres : `sanitize` (seuls `/` et `\`
+- variables — `workspace-path` : `workspace`, `branch`, `repo` (nom du
+  répertoire du dépôt), rendues en **mode strict** : une variable inconnue
+  (ex. `owner` du schéma worktrunk) est une **erreur**, jamais
+  silencieusement vide ; hooks et aliases : `workspace`, `workspace_path`,
+  `repo_path`, `cwd`, `args` (rendu souple) ; filtres : `sanitize` (seuls `/` et `\`
   → `-`), `sanitize_db`, `codename` ;
 - `--format json` sur `tt list` pour le machine-readable ;
 - hooks projet (`[[pre-start]]`…) soumis à **approbation** au premier run

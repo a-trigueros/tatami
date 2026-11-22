@@ -5,6 +5,7 @@ mod common;
 use common::TempRepo;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tatami::cmd::remove::{self, DirectoryOutcome, RemoveArgs};
 use tatami::hook::{Hooks, NoGate};
@@ -119,6 +120,67 @@ fn deletes_an_existing_namesake_bookmark_when_asked() {
         !bookmarks.contains("ws2"),
         "bookmark should be gone, list was: {bookmarks:?}"
     );
+}
+
+#[test]
+fn removes_a_workspace_whose_name_contains_a_slash() {
+    // Real failure: `remove feat/test` trashed to `trash/feat/test-…` and
+    // rename(2) failed with ENOENT (`trash/feat/` does not exist).
+    let repo = TempRepo::init();
+    repo.describe_working_copy("main workspace");
+    // Create the slashed workspace the way `switch --create` does, with
+    // config isolation: tests must never read the machine's real tatami or
+    // worktrunk config (its template points at ~/factory).
+    let home = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_tatami"))
+        .args(["switch", "--create", "feat/test"])
+        .current_dir(repo.path())
+        .env("JJ_CONFIG", repo.jj_config_path())
+        .env("HOME", home.path())
+        .output()
+        .expect("switch --create feat/test");
+    assert!(
+        output.status.success(),
+        "create failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // Default layout: a sibling dir named `<repo>.feat-test`.
+    let repo_name = repo
+        .path()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let ws_root = repo
+        .path()
+        .parent()
+        .unwrap()
+        .join(format!("{repo_name}.feat-test"));
+    assert!(ws_root.exists(), "default layout dir must exist");
+
+    let jj = CliJj::at(repo.path().clone());
+    let state_dir = tempfile::tempdir().unwrap();
+    let hooks = Hooks::none();
+    let report = remove::run(
+        &jj,
+        remove_args("feat/test", true, state_dir.path(), &hooks),
+        &mut Vec::new(),
+        &mut NoGate,
+    )
+    .expect("remove feat/test");
+
+    match report.directory {
+        DirectoryOutcome::Trashed(destination) => {
+            let entry = destination.file_name().and_then(|n| n.to_str()).unwrap();
+            assert!(
+                entry.starts_with("feat-test-"),
+                "sanitized trash entry (no `trash/feat/` subdirectory needed): {entry:?}"
+            );
+            assert!(destination.is_dir());
+        }
+        other => panic!("expected Trashed, got: {other:?}"),
+    }
+    assert!(!ws_root.exists(), "the workspace dir must be gone");
 }
 
 #[test]

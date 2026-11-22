@@ -25,6 +25,7 @@ Résolution : `~/.config/tatami/config.toml`, sinon fallback
 | 6 | Création workspace | bookmark du même nom créé par défaut (`jj bookmark create <nom> -r @`) |
 | 7 | Env `WORKTRUNK_*` | non acceptée ; tatami n'expose que `TATAMI_*` (même convention d'imbrication `__`) |
 | 8 | Intégration shell (révisé 2026-11-22) | `tatami config shell init` **imprime** le bloc à coller dans le rc — tatami n'écrit jamais dans les rc ni ne gère des fichiers de complétion ; le wrapper intercepte `switch` **et** `merge`, complétions branchées par `source <(tatami config completion <sh>)` (zsh : bloc à placer après `compinit`) |
+| 9 | Templates (révisé 2026-11-22) | `workspace-path` rendu en **strict** (variable inconnue = erreur, jamais vide) avec vars `workspace`/`branch`/`repo` ; hooks et aliases restent lenient jusqu'à la parité complète des vars worktrunk (M5). Le layout par défaut et les entrées de trash sanitize les noms : `feat/test` = **un** répertoire (`repo.feat-test`), jamais un sous-chemin |
 
 ## 3. Surface CLI cible (mapping `wt` → `tt`)
 

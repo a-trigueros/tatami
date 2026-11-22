@@ -162,6 +162,50 @@ fn the_pasted_wrapper_cds_back_after_merge_remove() {
     );
 }
 
+/// The switch contract the wrapper relies on: with `--create`, tatami prints
+/// the freshly created workspace's path — and nothing else — on stdout.
+#[test]
+fn switch_create_prints_the_new_workspace_path_on_stdout() {
+    let repo = TempRepo::init();
+    repo.describe_working_copy("main workspace");
+    // Config isolation: tests must never read the machine's real tatami or
+    // worktrunk config (its template points at ~/factory).
+    let home = tempfile::tempdir().unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tatami"))
+        .args(["switch", "--create", "ws3"])
+        .current_dir(repo.path())
+        .env("JJ_CONFIG", repo.jj_config_path())
+        .env("HOME", home.path())
+        .output()
+        .expect("run tatami switch --create");
+
+    assert!(
+        output.status.success(),
+        "switch --create failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Default layout: a sibling of the repo dir named `<repo>.<workspace>`.
+    let repo_name = repo
+        .path()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let expected = repo
+        .path()
+        .parent()
+        .unwrap()
+        .join(format!("{repo_name}.ws3"));
+    assert_eq!(
+        Path::new(stdout.trim()),
+        expected,
+        "stdout must be exactly the destination (the wrapper cds to it): {stdout:?}"
+    );
+    assert!(expected.exists(), "the workspace must have been created");
+}
+
 /// `tt <other>` passes through to the binary (no cd side effects).
 #[test]
 fn the_wrapper_passes_other_commands_through() {

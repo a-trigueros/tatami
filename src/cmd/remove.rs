@@ -133,7 +133,9 @@ fn trash(
     const EXDEV: i32 = 18;
     let trash_dir = state_dir.join("trash");
     fs::create_dir_all(&trash_dir).map_err(|source| RemoveError::Io { source })?;
-    let destination = trash_dir.join(format!("{name}-{now_millis}"));
+    // Sanitized: a workspace named `feat/test` must not need a `trash/feat/`
+    // parent directory (rename(2) would fail with ENOENT).
+    let destination = trash_dir.join(format!("{}-{now_millis}", crate::template::sanitize(name)));
     match fs::rename(root, &destination) {
         Ok(()) => Ok(destination),
         // Cross-device move: no trash, delete in place (data-loss risk for
@@ -474,5 +476,25 @@ mod remove_should {
             }
             other => panic!("expected UnknownWorkspace, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn trash_entries_are_sanitized_so_slashed_names_do_not_need_subdirectories() {
+        // `feat/test` once trashed to `trash/feat/test-…`: rename(2) failed
+        // with ENOENT because `trash/feat/` does not exist.
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join(".env"), "SECRET=1").unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+
+        let destination =
+            trash(root.path(), state_dir.path(), "feat/test", 1_000).expect("trash feat/test");
+
+        assert_eq!(
+            destination,
+            state_dir.path().join("trash").join("feat-test-1000")
+        );
+        assert!(destination.is_dir(), "root must have been moved");
+        assert!(!root.path().exists());
+        assert!(destination.join(".env").exists(), "files must survive");
     }
 }
