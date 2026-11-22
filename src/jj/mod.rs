@@ -37,6 +37,32 @@ pub trait Jj {
     /// deleted. shortcut: detected via jj's stderr string
     /// "No matching bookmarks" — revalidate on jj upgrades.
     fn bookmark_delete(&self, name: &str) -> Result<bool, JjError>;
+
+    /// Names of local bookmarks (remote-tracking entries, `name@remote`,
+    /// excluded).
+    fn bookmark_names(&self) -> Result<Vec<String>, JjError>;
+
+    /// Full commit id of a bookmark's target.
+    fn bookmark_commit_id(&self, name: &str) -> Result<String, JjError>;
+
+    /// Number of commits matching a revset.
+    fn revset_count(&self, revset: &str) -> Result<usize, JjError>;
+
+    /// Full commit ids matching a revset.
+    fn revset_commit_ids(&self, revset: &str) -> Result<Vec<String>, JjError>;
+
+    /// Rebases the commits in `source` (exclusive revset) onto `destination`.
+    /// Bookmarks pointing at rebased commits follow automatically (verified
+    /// 0.47.1); the chain structure is preserved (verified by graph).
+    fn rebase(&self, source: &str, destination: &str) -> Result<(), JjError>;
+
+    /// Moves a bookmark to `revision` — with no fast-forward guarantee; the
+    /// caller guards (tatami only ever fast-forwards).
+    fn bookmark_set(&self, name: &str, revision: &str) -> Result<(), JjError>;
+
+    /// Updates the current workspace's stale working copy (jj's own remedy
+    /// for a working copy left behind by rewrites made elsewhere).
+    fn workspace_update_stale(&self) -> Result<(), JjError>;
 }
 
 /// Working-copy commit status of a workspace, as jj sees it.
@@ -182,6 +208,57 @@ impl Jj for CliJj {
         let (_stdout, stderr) = self.run_with_stderr(&["bookmark", "delete", name])?;
         Ok(!stderr.contains("No matching bookmarks"))
     }
+
+    fn bookmark_names(&self) -> Result<Vec<String>, JjError> {
+        let names = self.run(&["bookmark", "list", "-T", "name ++ \"\\n\""])?;
+        Ok(names
+            .lines()
+            .map(str::trim)
+            .filter(|n| !n.is_empty() && !n.contains('@'))
+            .map(str::to_string)
+            .collect())
+    }
+
+    fn bookmark_commit_id(&self, name: &str) -> Result<String, JjError> {
+        self.revset_commit_ids(name).and_then(|ids| {
+            ids.into_iter()
+                .next()
+                .ok_or_else(|| JjError::BookmarkTargetMissing {
+                    name: name.to_string(),
+                })
+        })
+    }
+
+    fn revset_count(&self, revset: &str) -> Result<usize, JjError> {
+        Ok(self.revset_commit_ids(revset)?.len())
+    }
+
+    fn revset_commit_ids(&self, revset: &str) -> Result<Vec<String>, JjError> {
+        let out = self.run(&[
+            "log",
+            "--no-graph",
+            "-r",
+            revset,
+            "-T",
+            "commit_id ++ \"\\n\"",
+        ])?;
+        Ok(out.lines().map(str::to_string).collect())
+    }
+
+    fn rebase(&self, source: &str, destination: &str) -> Result<(), JjError> {
+        self.run(&["rebase", "-s", source, "-d", destination])?;
+        Ok(())
+    }
+
+    fn bookmark_set(&self, name: &str, revision: &str) -> Result<(), JjError> {
+        self.run(&["bookmark", "set", name, "-r", revision])?;
+        Ok(())
+    }
+
+    fn workspace_update_stale(&self) -> Result<(), JjError> {
+        self.run(&["workspace", "update-stale"])?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Error)]
@@ -208,4 +285,6 @@ pub enum JjError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("bookmark `{name}` has no target commit")]
+    BookmarkTargetMissing { name: String },
 }

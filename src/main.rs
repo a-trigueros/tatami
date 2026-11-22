@@ -148,6 +148,76 @@ fn main() {
                 cmd::remove::DirectoryOutcome::AlreadyGone => {}
             }
         }
+        Command::Rebase { target } => {
+            let adapter = jj::CliJj::at(std::env::current_dir().unwrap_or_else(|error| {
+                eprintln!("tatami: cannot determine the current directory: {error}");
+                std::process::exit(1);
+            }));
+            let outcome = cmd::rebase::run(&adapter, target.as_deref()).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            println!(
+                "rebased {} commit(s) onto `{}`",
+                outcome.commits, outcome.target
+            );
+        }
+        Command::Merge { target } => {
+            let dir = std::env::current_dir().unwrap_or_else(|error| {
+                eprintln!("tatami: cannot determine the current directory: {error}");
+                std::process::exit(1);
+            });
+            let paths_env = paths::ConfigEnv::from_env().unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let user_config = config::load_user_config(&paths_env).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let project_config = config::load_project_config(&dir).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let approvals = approvals::Approvals::load(&paths_env).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let project_id = state::host_root(&dir)
+                .unwrap_or_else(|error| {
+                    eprintln!("tatami: {error}");
+                    std::process::exit(1);
+                })
+                .display()
+                .to_string();
+            let mut gate = approvals::InteractiveGate::interactive(approvals, project_id, cli.yes);
+            let hooks = hook::Hooks {
+                user: Some(&user_config.config),
+                project: Some(&project_config.config),
+            };
+            let outcome = cmd::merge::run(
+                &jj::CliJj::at(dir.clone()),
+                target.as_deref(),
+                &hooks,
+                &mut gate,
+                &dir,
+                &mut std::io::stderr(),
+            )
+            .unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            println!(
+                "merged {} commit(s) into `{}`{}",
+                outcome.commits,
+                outcome.target,
+                if outcome.rebased {
+                    " (rebased)"
+                } else {
+                    " (fast-forward)"
+                }
+            );
+        }
         Command::Config { command } => match command {
             ConfigCommand::Show => {
                 let env = paths::ConfigEnv::from_env().unwrap_or_else(|error| {

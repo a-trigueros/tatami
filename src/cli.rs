@@ -40,6 +40,17 @@ pub enum Command {
         #[arg(long = "delete-bookmark")]
         delete_bookmark: bool,
     },
+    /// Re-parent the current workspace's commits onto the target bookmark
+    Rebase {
+        /// Target bookmark; defaults to main, then master, then trunk
+        target: Option<String>,
+    },
+    /// Integrate the current workspace into the target bookmark (rebase if
+    /// diverged, then fast-forward)
+    Merge {
+        /// Target bookmark; defaults to main, then master, then trunk
+        target: Option<String>,
+    },
     /// Inspect tatami configuration
     Config {
         #[command(subcommand)]

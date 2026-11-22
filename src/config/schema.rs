@@ -41,6 +41,10 @@ pub struct ProjectConfig {
     pre_remove: Option<CommandSpec>,
     #[serde(rename = "post-remove")]
     post_remove: Option<CommandSpec>,
+    #[serde(rename = "pre-merge")]
+    pre_merge: Option<CommandSpec>,
+    #[serde(rename = "post-merge")]
+    post_merge: Option<CommandSpec>,
     /// Sections tatami does not execute yet (aliases, list, forge, step…).
     #[serde(flatten)]
     unparsed: BTreeMap<String, toml::Value>,
@@ -55,6 +59,8 @@ impl ProjectConfig {
             crate::hook::HookPhase::PostStart => self.post_start.as_ref(),
             crate::hook::HookPhase::PreRemove => self.pre_remove.as_ref(),
             crate::hook::HookPhase::PostRemove => self.post_remove.as_ref(),
+            crate::hook::HookPhase::PreMerge => self.pre_merge.as_ref(),
+            crate::hook::HookPhase::PostMerge => self.post_merge.as_ref(),
         }
     }
 }
@@ -81,6 +87,10 @@ pub struct UserConfig {
     pre_remove: Option<CommandSpec>,
     #[serde(rename = "post-remove")]
     post_remove: Option<CommandSpec>,
+    #[serde(rename = "pre-merge")]
+    pre_merge: Option<CommandSpec>,
+    #[serde(rename = "post-merge")]
+    post_merge: Option<CommandSpec>,
     /// Sections tatami does not execute yet (aliases, switch, merge, remove,
     /// commit, step, list, projects, and hooks for commands tatami does not
     /// have yet like pre-commit). Kept for lossless round-trip introspection.
@@ -109,6 +119,8 @@ impl UserConfig {
             crate::hook::HookPhase::PostStart => self.post_start.as_ref(),
             crate::hook::HookPhase::PreRemove => self.pre_remove.as_ref(),
             crate::hook::HookPhase::PostRemove => self.post_remove.as_ref(),
+            crate::hook::HookPhase::PreMerge => self.pre_merge.as_ref(),
+            crate::hook::HookPhase::PostMerge => self.post_merge.as_ref(),
         }
     }
 }

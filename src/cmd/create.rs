@@ -39,7 +39,7 @@ pub fn run(
         // `Cannot access … No such file or directory` otherwise).
         fs::create_dir_all(parent).map_err(|source| CreateError::Io { source })?;
     }
-    jj.workspace_add(name, &destination)?;
+    crate::cmd::with_stale_recovery(jj, |jj| jj.workspace_add(name, &destination))?;
     jj.bookmark_create(name, name)?;
 
     // Worktrunk-sourced order: creation → pre-start (blocking) → post-start

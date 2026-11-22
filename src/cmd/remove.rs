@@ -43,7 +43,7 @@ pub fn run(
     out: &mut dyn Write,
     gate: &mut dyn ApprovalGate,
 ) -> Result<RemoveReport, RemoveError> {
-    let workspaces = jj.workspaces()?;
+    let workspaces = crate::cmd::with_stale_recovery(jj, |jj| jj.workspaces())?;
     let target = resolve(&workspaces, args.name)?;
     if target.is_current {
         return Err(RemoveError::RefuseCurrentWorkspace {
@@ -235,6 +235,34 @@ mod remove_should {
                 .borrow_mut()
                 .push(name.to_string());
             Ok(self.bookmark_delete_result)
+        }
+
+        fn bookmark_names(&self) -> Result<Vec<String>, JjError> {
+            panic!("FakeJj::bookmark_names is not exercised by remove tests")
+        }
+
+        fn bookmark_commit_id(&self, _name: &str) -> Result<String, JjError> {
+            panic!("FakeJj::bookmark_commit_id is not exercised by remove tests")
+        }
+
+        fn revset_count(&self, _revset: &str) -> Result<usize, JjError> {
+            panic!("FakeJj::revset_count is not exercised by remove tests")
+        }
+
+        fn revset_commit_ids(&self, _revset: &str) -> Result<Vec<String>, JjError> {
+            panic!("FakeJj::revset_commit_ids is not exercised by remove tests")
+        }
+
+        fn rebase(&self, _source: &str, _destination: &str) -> Result<(), JjError> {
+            panic!("FakeJj::rebase is not exercised by remove tests")
+        }
+
+        fn bookmark_set(&self, _name: &str, _revision: &str) -> Result<(), JjError> {
+            panic!("FakeJj::bookmark_set is not exercised by remove tests")
+        }
+
+        fn workspace_update_stale(&self) -> Result<(), JjError> {
+            panic!("FakeJj::workspace_update_stale is not exercised by remove tests")
         }
     }
 

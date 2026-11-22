@@ -66,11 +66,11 @@ impl TempRepo {
         );
     }
 
-    /// Runs jj and returns trimmed stdout (for inspecting repo state).
-    pub fn capture_jj(&self, args: &[&str]) -> String {
+    /// Runs jj inside a given workspace and returns trimmed stdout.
+    pub fn capture_jj_in(&self, workspace: &Path, args: &[&str]) -> String {
         let output = Command::new("jj")
             .args(args)
-            .current_dir(self.dir.path().join("repo"))
+            .current_dir(workspace)
             .env("JJ_CONFIG", &self.config_path)
             .output()
             .expect("jj binary must be installed and on PATH");
@@ -81,6 +81,11 @@ impl TempRepo {
             String::from_utf8_lossy(&output.stderr)
         );
         String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    /// Runs jj and returns trimmed stdout (for inspecting repo state).
+    pub fn capture_jj(&self, args: &[&str]) -> String {
+        self.capture_jj_in(&self.dir.path().join("repo"), args)
     }
 
     /// Root of the freshly created repo. Canonicalized because jj resolves

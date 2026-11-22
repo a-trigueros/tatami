@@ -211,11 +211,30 @@ Chaque jalon livrera un binaire utilisable.
 
 Notes épinglées (jj 0.47.1 + shells) :
 
-- **Stale** : `jj workspace list` / `jj log` fonctionnent depuis un workspace
-  stale (exit 0, vérifié) — seules les commandes qui snapshot échouent, et jj
-  affiche lui-même `use jj workspace update-stale`. Donc **pas de gestion
-  stale** dans `tt list`/`tt switch` ; un indicateur « stale » dans `tt list`
-  reste une idée M5.
+- **Stale (révisé 2026-11-22)** : le premier sondage (M1, staleness par
+  `describe` à arbre identique) montrait `jj workspace list` fonctionnel
+  depuis un workspace stale — le cas réel (rebase ayant **changé l'arbre** du
+  commit de working copy) fait échouer la commande (exit 1, stderr
+  `The working copy is stale`). Tatami **auto-héale** : détection du marqueur
+  dans le stderr → `jj workspace update-stale` (remède suggéré par jj, sans
+  perte) → retry une fois (`cmd::with_stale_recovery`, premier appel jj de
+  chaque commande). `shortcut:` détection par string-match sur le stderr.
+  Un indicateur « stale » dans `tt list` reste une idée M5.
+- **`jj workspace add` sans `-r`** parente le nouveau `@` sur **le parent du
+  `@` courant** → les workspaces naissent **frères** (divergés) du workspace
+  créateur : la divergence est structurelle, merge/rebase sont nécessaires
+  d'office. Et : jj **rebase automatiquement les descendants** de tout commit
+  réécrit — une fois intégré, un workspace reste aligné avec la cible (la
+  divergence ne revient que sur une nouvelle création sibling ou un bookmark
+  déplacé).
+- **Merge v1 (décisions)** : pas de squash (l'historique jj est préservé ;
+  `merge.squash` de worktrunk non repris en l'état), pas de push automatique
+  (`tt step push` séparément), pas de remove automatique du workspace fusionné
+  (l'appelant serait dans un répertoire détruit — réviser avec un flag
+  `--remove` quand `switch` pourra déplacer l'appelant) ; tatami ne
+  fast-forward que, et vérifie l'ancestralité elle-même (`jj bookmark set`
+  ne protège pas) ; la revset source exclut les commits vides
+  (`~empty()`) et le ff vise `heads(...)` — jamais le bout `@` vide.
 - Switch = le binaire imprime le chemin, **le shell fait le `cd`** — sans le
   wrapper, `tt switch` ne déplace personne (vérifié en smoke test).
 - Picker minimal numéroté (une seule tentative, EOF/choix invalide = annulé).
@@ -296,11 +315,23 @@ Notes épinglées (jj 0.47.1 + shells) :
         la clé `env` dans les tables de hooks worktrunk (variable
         d'environnement vs commande nommée)
 
+### M3 — merge + rebase + step (en cours, 2026-11-22)
+
+- [x] `tt rebase [cible]` / `tt merge [cible]` : noyau partagé
+      (`merge::integrate`) — cible explicite ou auto (`main` → `master` →
+      `trunk` locaux), bookmark homonyme requis (identité du workspace),
+      revset source `::<ws>@ ~ ::<cible> & ~empty()`, rebase à structure
+      préservée, ff du bookmark cible (merge seulement) vérifié par
+      ancestralité, phases pre/post-merge (gate + hooks), auto-heal stale
+- [ ] `tt step …` : commit, squash, rebase (alias), push, diff, for-each,
+      prune, `copy-ignored` (vérifier le sens exact de la clé `env` des
+      tables de hooks d'ici là)
+- [ ] `tt merge --remove` (réviser : nécessite que switch déplace l'appelant)
+
 ### Prochaine étape
 
-1. **M3 — merge + rebase + step** : workflow `tt merge` jj-isé (résolution du
-   bookmark principal, squash/rebase/ff, push), `tt rebase`, `tt step`
-   (commit, squash, rebase, push, diff, for-each, prune, `copy-ignored`)
+1. **M3 suite** : `tt step …` (commit, squash, push, diff, for-each, prune,
+   `copy-ignored`)
 2. **M4 — finition** : aliases, minijinja complet (variables/filtres hooks +
    `workspace-path`), `--format json`, `tt config state` (+ purge du trash),
    logs des hooks détachés, `tt config approvals add`, complétions étendues

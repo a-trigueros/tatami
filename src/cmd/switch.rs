@@ -39,7 +39,7 @@ pub fn run(
     picker_in: &mut dyn BufRead,
     gate: &mut dyn ApprovalGate,
 ) -> Result<PathBuf, SwitchError> {
-    let workspaces = jj.workspaces()?;
+    let workspaces = crate::cmd::with_stale_recovery(jj, |jj| jj.workspaces())?;
     let current = workspaces
         .iter()
         .find(|w| w.is_current)
@@ -262,6 +262,34 @@ mod switch_should {
 
         fn bookmark_delete(&self, _name: &str) -> Result<bool, JjError> {
             panic!("FakeJj::bookmark_delete is not exercised by switch tests")
+        }
+
+        fn bookmark_names(&self) -> Result<Vec<String>, JjError> {
+            panic!("FakeJj::bookmark_names is not exercised by switch tests")
+        }
+
+        fn bookmark_commit_id(&self, _name: &str) -> Result<String, JjError> {
+            panic!("FakeJj::bookmark_commit_id is not exercised by switch tests")
+        }
+
+        fn revset_count(&self, _revset: &str) -> Result<usize, JjError> {
+            panic!("FakeJj::revset_count is not exercised by switch tests")
+        }
+
+        fn revset_commit_ids(&self, _revset: &str) -> Result<Vec<String>, JjError> {
+            panic!("FakeJj::revset_commit_ids is not exercised by switch tests")
+        }
+
+        fn rebase(&self, _source: &str, _destination: &str) -> Result<(), JjError> {
+            panic!("FakeJj::rebase is not exercised by switch tests")
+        }
+
+        fn bookmark_set(&self, _name: &str, _revision: &str) -> Result<(), JjError> {
+            panic!("FakeJj::bookmark_set is not exercised by switch tests")
+        }
+
+        fn workspace_update_stale(&self) -> Result<(), JjError> {
+            panic!("FakeJj::workspace_update_stale is not exercised by switch tests")
         }
     }
 
