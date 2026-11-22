@@ -264,6 +264,22 @@ mod remove_should {
         fn workspace_update_stale(&self) -> Result<(), JjError> {
             panic!("FakeJj::workspace_update_stale is not exercised by remove tests")
         }
+
+        fn commit(&self, _message: &str) -> Result<(), JjError> {
+            panic!("FakeJj::commit is not exercised by remove tests")
+        }
+
+        fn squash(&self) -> Result<(), JjError> {
+            panic!("FakeJj::squash is not exercised by remove tests")
+        }
+
+        fn push_bookmark(&self, _name: &str) -> Result<(), JjError> {
+            panic!("FakeJj::push_bookmark is not exercised by remove tests")
+        }
+
+        fn diff(&self) -> Result<String, JjError> {
+            panic!("FakeJj::diff is not exercised by remove tests")
+        }
     }
 
     fn ws(name: &str, current: bool, root: Option<PathBuf>) -> WorkspaceInfo {

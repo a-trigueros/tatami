@@ -63,6 +63,18 @@ pub trait Jj {
     /// Updates the current workspace's stale working copy (jj's own remedy
     /// for a working copy left behind by rewrites made elsewhere).
     fn workspace_update_stale(&self) -> Result<(), JjError>;
+
+    /// Describes the working-copy commit and starts a new empty child.
+    fn commit(&self, message: &str) -> Result<(), JjError>;
+
+    /// Moves the working-copy changes into the parent commit.
+    fn squash(&self) -> Result<(), JjError>;
+
+    /// Pushes one local bookmark to its tracking remote.
+    fn push_bookmark(&self, name: &str) -> Result<(), JjError>;
+
+    /// The working-copy diff.
+    fn diff(&self) -> Result<String, JjError>;
 }
 
 /// Working-copy commit status of a workspace, as jj sees it.
@@ -258,6 +270,25 @@ impl Jj for CliJj {
     fn workspace_update_stale(&self) -> Result<(), JjError> {
         self.run(&["workspace", "update-stale"])?;
         Ok(())
+    }
+
+    fn commit(&self, message: &str) -> Result<(), JjError> {
+        self.run(&["commit", "-m", message])?;
+        Ok(())
+    }
+
+    fn squash(&self) -> Result<(), JjError> {
+        self.run(&["squash"])?;
+        Ok(())
+    }
+
+    fn push_bookmark(&self, name: &str) -> Result<(), JjError> {
+        self.run(&["git", "push", "--bookmark", name])?;
+        Ok(())
+    }
+
+    fn diff(&self) -> Result<String, JjError> {
+        self.run(&["diff"])
     }
 }
 

@@ -51,6 +51,11 @@ pub enum Command {
         /// Target bookmark; defaults to main, then master, then trunk
         target: Option<String>,
     },
+    /// Building blocks, runnable one at a time
+    Step {
+        #[command(subcommand)]
+        command: StepCommand,
+    },
     /// Inspect tatami configuration
     Config {
         #[command(subcommand)]
@@ -68,6 +73,34 @@ pub enum ConfigCommand {
         #[command(subcommand)]
         command: ShellCommand,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum StepCommand {
+    /// Describe the working copy and start a new empty one
+    Commit {
+        /// Commit description
+        #[arg(short, long)]
+        message: String,
+    },
+    /// Move the working-copy changes into the parent commit
+    Squash,
+    /// Re-parent the workspace commits onto a target (same as `tt rebase`)
+    Rebase {
+        /// Target bookmark; defaults to main, then master, then trunk
+        target: Option<String>,
+    },
+    /// Push the workspace's namesake bookmark
+    Push,
+    /// Show the working-copy diff
+    Diff,
+    /// Run a command in every workspace
+    ForEach {
+        /// Command to run (executed via sh, cwd = each workspace)
+        command: Vec<String>,
+    },
+    /// Remove workspaces whose commits are fully integrated
+    Prune,
 }
 
 #[derive(Subcommand, Debug)]

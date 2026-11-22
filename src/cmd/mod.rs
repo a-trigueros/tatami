@@ -10,6 +10,7 @@ pub mod merge;
 pub mod rebase;
 pub mod remove;
 pub mod shell;
+pub mod step;
 pub mod switch;
 
 use crate::jj::{Jj, JjError};

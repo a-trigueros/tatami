@@ -33,7 +33,7 @@ use crate::jj::{Jj, JjError};
 const DEFAULT_TARGETS: [&str; 3] = ["main", "master", "trunk"];
 
 /// Chooses the default target: first candidate present among `available`.
-fn default_target(available: &[String]) -> Result<String, MergeError> {
+pub(crate) fn default_target(available: &[String]) -> Result<String, MergeError> {
     DEFAULT_TARGETS
         .iter()
         .find(|candidate| available.iter().any(|name| name == *candidate))
@@ -155,7 +155,7 @@ pub fn run(
     Ok(outcome)
 }
 
-fn current_workspace_name(jj: &dyn Jj) -> Result<String, MergeError> {
+pub(crate) fn current_workspace_name(jj: &dyn Jj) -> Result<String, MergeError> {
     super::with_stale_recovery(jj, |jj| jj.workspaces())?
         .into_iter()
         .find(|w| w.is_current)

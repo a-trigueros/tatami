@@ -45,6 +45,10 @@ pub struct ProjectConfig {
     pre_merge: Option<CommandSpec>,
     #[serde(rename = "post-merge")]
     post_merge: Option<CommandSpec>,
+    #[serde(rename = "pre-commit")]
+    pre_commit: Option<CommandSpec>,
+    #[serde(rename = "post-commit")]
+    post_commit: Option<CommandSpec>,
     /// Sections tatami does not execute yet (aliases, list, forge, step…).
     #[serde(flatten)]
     unparsed: BTreeMap<String, toml::Value>,
@@ -61,6 +65,8 @@ impl ProjectConfig {
             crate::hook::HookPhase::PostRemove => self.post_remove.as_ref(),
             crate::hook::HookPhase::PreMerge => self.pre_merge.as_ref(),
             crate::hook::HookPhase::PostMerge => self.post_merge.as_ref(),
+            crate::hook::HookPhase::PreCommit => self.pre_commit.as_ref(),
+            crate::hook::HookPhase::PostCommit => self.post_commit.as_ref(),
         }
     }
 }
@@ -91,6 +97,10 @@ pub struct UserConfig {
     pre_merge: Option<CommandSpec>,
     #[serde(rename = "post-merge")]
     post_merge: Option<CommandSpec>,
+    #[serde(rename = "pre-commit")]
+    pre_commit: Option<CommandSpec>,
+    #[serde(rename = "post-commit")]
+    post_commit: Option<CommandSpec>,
     /// Sections tatami does not execute yet (aliases, switch, merge, remove,
     /// commit, step, list, projects, and hooks for commands tatami does not
     /// have yet like pre-commit). Kept for lossless round-trip introspection.
@@ -121,6 +131,8 @@ impl UserConfig {
             crate::hook::HookPhase::PostRemove => self.post_remove.as_ref(),
             crate::hook::HookPhase::PreMerge => self.pre_merge.as_ref(),
             crate::hook::HookPhase::PostMerge => self.post_merge.as_ref(),
+            crate::hook::HookPhase::PreCommit => self.pre_commit.as_ref(),
+            crate::hook::HookPhase::PostCommit => self.post_commit.as_ref(),
         }
     }
 }
@@ -229,14 +241,16 @@ mod workspace_path_should {
     }
 
     #[test]
-    fn hooks_for_unimplemented_commands_stay_unparsed() {
+    fn parses_the_full_hook_lifecycle_typed() {
         let config = parse("pre-commit = \"cargo fmt\"");
 
-        assert_eq!(config.hook(crate::hook::HookPhase::PreStart), None);
-        // Still available raw, for introspection:
+        assert_eq!(
+            config.hook(crate::hook::HookPhase::PreCommit),
+            Some(&CommandSpec::Single("cargo fmt".to_string()))
+        );
         assert!(
-            config.unparsed.contains_key("pre-commit"),
-            "unparsed keys: {:?}",
+            !config.unparsed.contains_key("pre-commit"),
+            "pre-commit is now a typed hook: {:?}",
             config.unparsed.keys().collect::<Vec<_>>()
         );
     }

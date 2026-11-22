@@ -291,6 +291,22 @@ mod switch_should {
         fn workspace_update_stale(&self) -> Result<(), JjError> {
             panic!("FakeJj::workspace_update_stale is not exercised by switch tests")
         }
+
+        fn commit(&self, _message: &str) -> Result<(), JjError> {
+            panic!("FakeJj::commit is not exercised by switch tests")
+        }
+
+        fn squash(&self) -> Result<(), JjError> {
+            panic!("FakeJj::squash is not exercised by switch tests")
+        }
+
+        fn push_bookmark(&self, _name: &str) -> Result<(), JjError> {
+            panic!("FakeJj::push_bookmark is not exercised by switch tests")
+        }
+
+        fn diff(&self) -> Result<String, JjError> {
+            panic!("FakeJj::diff is not exercised by switch tests")
+        }
     }
 
     struct FakeState {

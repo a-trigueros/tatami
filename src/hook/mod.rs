@@ -40,6 +40,8 @@ pub enum HookPhase {
     PostRemove,
     PreMerge,
     PostMerge,
+    PreCommit,
+    PostCommit,
 }
 
 impl HookPhase {
@@ -54,6 +56,8 @@ impl HookPhase {
             Self::PostRemove => "post-remove",
             Self::PreMerge => "pre-merge",
             Self::PostMerge => "post-merge",
+            Self::PreCommit => "pre-commit",
+            Self::PostCommit => "post-commit",
         }
     }
 }

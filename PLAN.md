@@ -323,18 +323,25 @@ Notes épinglées (jj 0.47.1 + shells) :
       revset source `::<ws>@ ~ ::<cible> & ~empty()`, rebase à structure
       préservée, ff du bookmark cible (merge seulement) vérifié par
       ancestralité, phases pre/post-merge (gate + hooks), auto-heal stale
-- [ ] `tt step …` : commit, squash, rebase (alias), push, diff, for-each,
-      prune, `copy-ignored` (vérifier le sens exact de la clé `env` des
-      tables de hooks d'ici là)
+- [x] `tt step …` : `commit` (+ phases pre/post-commit — cycle de vie hooks
+      complet), `squash`, `rebase` (alias du noyau), `push` (bookmark
+      homonyme ; l'erreur jj sans remote remonte telle quelle), `diff`,
+      `for-each` (séquentiel, cwd = racine de chaque workspace, répertoires
+      disparus sautés, exit 1 si un échoue), `prune` (réutilise la voie
+      remove complète : gardes, hooks, trash, approbations ; skip sans
+      bookmark homonyme, skip gardé si travail non intégré)
+      - `copy-ignored` : **reporté M4** — sémantique exacte worktrunk à
+        sourcer (source/cible, sélection de fichiers) avant portage
 - [ ] `tt merge --remove` (réviser : nécessite que switch déplace l'appelant)
+
+### M3 — merge + rebase + step ✅ (2026-11-22)
 
 ### Prochaine étape
 
-1. **M3 suite** : `tt step …` (commit, squash, push, diff, for-each, prune,
-   `copy-ignored`)
-2. **M4 — finition** : aliases, minijinja complet (variables/filtres hooks +
+1. **M4 — finition** : aliases, minijinja complet (variables/filtres hooks +
    `workspace-path`), `--format json`, `tt config state` (+ purge du trash),
-   logs des hooks détachés, `tt config approvals add`, complétions étendues
+   logs des hooks détachés, `tt config approvals add`, complétions étendues,
+   `copy-ignored` (après sourcing worktrunk)
 
 ### Contrats jj épinglés pour `tt list` (jj 0.47.1, docs templates v0.47.1)
 
