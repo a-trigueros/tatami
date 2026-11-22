@@ -162,6 +162,18 @@ pub enum StepCommand {
     },
     /// Remove workspaces whose commits are fully integrated
     Prune,
+    /// Copy git-ignored files from one workspace to another
+    CopyIgnored {
+        /// Source workspace; defaults to the primary (host) workspace
+        #[arg(long)]
+        from: Option<String>,
+        /// Destination workspace; defaults to the current one
+        #[arg(long)]
+        to: Option<String>,
+        /// Overwrite destination files that already exist
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

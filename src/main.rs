@@ -332,6 +332,23 @@ fn main() {
                         std::process::exit(1);
                     }
                 }
+                StepCommand::CopyIgnored { from, to, force } => {
+                    let report =
+                        cmd::step::copy_ignored(&adapter, from.as_deref(), to.as_deref(), force)
+                            .unwrap_or_else(|error| {
+                                eprintln!("tatami: {error}");
+                                std::process::exit(1);
+                            });
+                    for copied in &report.copied {
+                        println!("copied {}", copied.display());
+                    }
+                    for skipped in &report.skipped_existing {
+                        println!(
+                            "skipped (exists): {} — use --force to overwrite",
+                            skipped.display()
+                        );
+                    }
+                }
                 StepCommand::Prune => {
                     let state_dir = state::state_dir(&dir).unwrap_or_else(|error| {
                         eprintln!("tatami: {error}");

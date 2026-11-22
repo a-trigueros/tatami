@@ -232,3 +232,16 @@ pub enum StepError {
     #[error("cannot determine the current workspace")]
     CurrentWorkspaceNotFound,
 }
+
+/// `tt step copy-ignored` — thin dispatch to the dedicated module.
+pub fn copy_ignored(
+    jj: &dyn Jj,
+    from: Option<&str>,
+    to: Option<&str>,
+    force: bool,
+) -> Result<crate::cmd::copy_ignored::CopyReport, crate::cmd::copy_ignored::CopyError> {
+    crate::cmd::copy_ignored::run(
+        jj,
+        crate::cmd::copy_ignored::CopyIgnoredArgs { from, to, force },
+    )
+}
