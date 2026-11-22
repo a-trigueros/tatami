@@ -71,6 +71,10 @@ pub enum Command {
     Merge {
         /// Target bookmark; defaults to main, then master, then trunk
         target: Option<String>,
+        /// Also forget the merged workspace (the wrapper cds to the printed
+        /// destination; without the wrapper, run from another workspace)
+        #[arg(long)]
+        remove: bool,
     },
     /// Building blocks, runnable one at a time
     Step {

@@ -74,18 +74,17 @@ pub fn run(
         .map_err(RemoveError::Hook)?;
     }
 
-    jj.workspace_forget(args.name)?;
+    let directory = forget_and_trash(
+        jj,
+        args.name,
+        target.root.as_deref(),
+        args.state_dir,
+        args.now_millis,
+    )?;
     let bookmark_deleted = if args.delete_bookmark {
         jj.bookmark_delete(args.name)?
     } else {
         false
-    };
-
-    let directory = match &target.root {
-        Some(root) if root.exists() => {
-            DirectoryOutcome::Trashed(trash(root, args.state_dir, args.name, args.now_millis)?)
-        }
-        _ => DirectoryOutcome::AlreadyGone,
     };
 
     hook::run_detached(
@@ -184,6 +183,25 @@ pub enum RemoveError {
     },
     #[error(transparent)]
     Hook(#[from] HookError),
+}
+
+/// Forgets a workspace and trashes its directory — the removal mechanics
+/// without the guards, shared by `tt remove` and `merge --remove`.
+/// `root` is the workspace's recorded root (`None` = nothing on disk).
+pub(crate) fn forget_and_trash(
+    jj: &dyn Jj,
+    name: &str,
+    root: Option<&Path>,
+    state_dir: &Path,
+    now_millis: u64,
+) -> Result<DirectoryOutcome, RemoveError> {
+    jj.workspace_forget(name)?;
+    match root {
+        Some(root) if root.exists() => Ok(DirectoryOutcome::Trashed(trash(
+            root, state_dir, name, now_millis,
+        )?)),
+        _ => Ok(DirectoryOutcome::AlreadyGone),
+    }
 }
 
 #[cfg(test)]

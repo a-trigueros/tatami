@@ -363,11 +363,30 @@ Notes épinglées (jj 0.47.1 + shells) :
       - `shortcut:` `--KEY` binalise sans vérifier que le template référence
         la clé (worktrunk ne binde que si référencée) ; pas de `--` dur
         (les positionnels après `--` sont acceptés comme positionnels)
-- [ ] `copy-ignored` (après sourcing worktrunk fait — copie des git-ignorés
-      via `.worktreeinclude` + excludes ; nécessite le crate `ignore` ou une
-      énumération jj ; `jj file list` n'a pas de `--ignored` en 0.47.1)
-- [ ] `tt merge --remove` (réviser)
-- [ ] `codename(n)` (listes petname embarquées, hash déterministe)
+- [x] `tt step copy-ignored --from/--to/--force` : collecte des ignorés via
+      une pile de matchers gitignore maison (imbriqués + `.git/info/exclude`,
+      deepest-wins, whitelist) — le crate `ignore` n'expose pas son
+      `IgnoreBuilder` ; `.worktreeinclude` filtre ; existants sautés sans
+      `--force` ; exclusions permanentes `.jj`/`.git` ; copies simples
+      (pas de reflink — `shortcut:` si les gros fichiers deviennent un sujet)
+      - piége repéré : `jj workspace add` snapshotte le workspace créateur —
+        la destination contient déjà une copie des fichiers du commit de base
+        (le test doit créer les ignorés côté source uniquement)
+- [x] `codename(n)` : crate `petname` (listes medium = parité), n-1
+      adjectifs + 1 nom, déterministe, répétitions évitées
+      (`shortcut:` hash de sélection FNV-1a maison, non bit-identique)
+- [x] `tt merge --remove` : forget + trash du workspace fusionné, landing =
+      workspace porteur de la cible (sinon hôte) imprimé pour le cd du
+      wrapper (qui intercepte désormais `switch` ET `merge`) ; garde hôte
+      **avant toute mutation**, gardez `--remove` opt-in (sans wrapper,
+      l'appelant reste dans un répertoire poubellisé — documenté)
+- [x] README.md (usage, config, état interne, développement)
+
+### M4 — finition ✅ (2026-11-22)
+
+Reste (arrière-plan M5) : identité projet `host/owner/repo` + table
+`[projects]` du user config, `codename` bit-identique worktrunk, logs
+rotatifs/purgés, `--format json` sur merge/prune, fish/nushell.
 
 ### Prochaine étape
 

@@ -13,6 +13,7 @@ home = "0.5"
 clap_complete = "4"
 minijinja = "3.1.0"
 ignore = "0.4.34"
+petname = "3.2.0"
 
 [dev-dependencies]
 tempfile = "3"

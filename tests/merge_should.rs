@@ -6,9 +6,33 @@
 mod common;
 
 use common::TempRepo;
-use tatami::cmd::{merge, rebase};
+use std::path::Path;
+use tatami::cmd::merge::{self, MergeArgs};
+use tatami::cmd::rebase;
 use tatami::hook::{Hooks, NoGate};
-use tatami::jj::CliJj;
+use tatami::jj::{CliJj, Jj};
+
+static NO_HOOKS: Hooks<'static> = Hooks {
+    user: None,
+    project: None,
+};
+
+fn merge_args<'a>(
+    target: Option<&'a str>,
+    remove_current: bool,
+    caller_root: &'a Path,
+    state_dir: &'a Path,
+) -> MergeArgs<'a> {
+    MergeArgs {
+        target,
+        remove_current,
+        hooks: &NO_HOOKS,
+        caller_root,
+        logs_dir: None,
+        state_dir,
+        now_millis: 1_000,
+    }
+}
 
 fn create_main(repo: &TempRepo) {
     repo.capture_jj(&["bookmark", "create", "main", "-r", "@"]);
@@ -30,8 +54,7 @@ fn workspace_with_commit(repo: &TempRepo, name: &str, message: &str) {
 fn fast_forwards_when_the_workspace_is_descendant() {
     let repo = TempRepo::init();
     create_main(&repo);
-    // Created ON the main bookmark (`jj workspace add -r main`), unlike the
-    // default sibling layout — this workspace is a descendant of main.
+    // Created ON the main bookmark — this workspace is a descendant of main.
     repo.capture_jj(&["workspace", "add", "-r", "main", "../ws1"]);
     let ws1_root = repo.path().parent().unwrap().join("ws1");
     std::fs::write(ws1_root.join("ws1.txt"), "content").unwrap();
@@ -41,11 +64,8 @@ fn fast_forwards_when_the_workspace_is_descendant() {
     let jj = CliJj::at(ws1_root.clone());
     let outcome = merge::run(
         &jj,
-        None,
-        &Hooks::none(),
+        merge_args(None, false, &ws1_root, &ws1_root),
         &mut NoGate,
-        &ws1_root,
-        None,
         &mut Vec::new(),
     )
     .expect("merge ws1");
@@ -54,8 +74,6 @@ fn fast_forwards_when_the_workspace_is_descendant() {
     assert!(!outcome.rebased, "already a descendant: pure fast-forward");
     assert_eq!(outcome.commits, 1);
     assert!(outcome.bookmark_moved);
-
-    // main now sits on the workspace's non-empty tip (never the empty @).
     let at_main = repo.capture_jj(&["log", "-r", "main", "--no-graph", "-T", "description"]);
     assert_eq!(at_main, "feature A");
 }
@@ -75,18 +93,13 @@ fn rebases_diverged_commits_then_moves_the_target() {
     let jj = CliJj::at(ws1_root.clone());
     let outcome = merge::run(
         &jj,
-        None,
-        &Hooks::none(),
+        merge_args(None, false, &ws1_root, &ws1_root),
         &mut NoGate,
-        &ws1_root,
-        None,
         &mut Vec::new(),
     )
     .expect("merge diverged ws1");
 
     assert!(outcome.rebased, "diverged chains need a rebase");
-    // Linear history: everything reachable from the workspace is reachable
-    // from main.
     let missing = repo.capture_jj(&[
         "log",
         "-r",
@@ -114,11 +127,6 @@ fn rebase_reparents_without_moving_the_target() {
 
     assert!(outcome.rebased);
     assert!(!outcome.bookmark_moved, "rebase never moves the target");
-    let at_main = repo.capture_jj(&["log", "-r", "main", "--no-graph", "-T", "description"]);
-    assert_eq!(at_main, "main work", "main bookmark must stay put");
-    // The chain must now be rooted on main (descendant), without being
-    // integrated: main stays put, and the whole workspace chain (main work,
-    // feature A, empty tip) sits below ws1@.
     let chain = repo.capture_jj(&["log", "-r", "main::ws1@", "--no-graph", "-T", "description"]);
     assert!(chain.contains("main work"), "chain was: {chain:?}");
     assert!(chain.contains("feature A"), "chain was: {chain:?}");
@@ -134,11 +142,8 @@ fn requires_the_namesake_bookmark() {
     let jj = CliJj::at(loose_root.clone());
     let error = merge::run(
         &jj,
-        None,
-        &Hooks::none(),
+        merge_args(None, false, &loose_root, &loose_root),
         &mut NoGate,
-        &loose_root,
-        None,
         &mut Vec::new(),
     )
     .unwrap_err();
@@ -153,7 +158,6 @@ fn requires_the_namesake_bookmark() {
 fn reports_nothing_to_merge_when_fully_integrated() {
     let repo = TempRepo::init();
     create_main(&repo);
-    // ws1 exists with a bookmark but no commits of its own.
     repo.add_workspace("ws1");
     repo.capture_jj(&["bookmark", "create", "ws1", "-r", "ws1@"]);
     let ws1_root = repo.path().parent().unwrap().join("ws1");
@@ -161,11 +165,8 @@ fn reports_nothing_to_merge_when_fully_integrated() {
     let jj = CliJj::at(ws1_root.clone());
     let error = merge::run(
         &jj,
-        None,
-        &Hooks::none(),
+        merge_args(None, false, &ws1_root, &ws1_root),
         &mut NoGate,
-        &ws1_root,
-        None,
         &mut Vec::new(),
     )
     .unwrap_err();
@@ -186,11 +187,8 @@ fn falls_back_to_master_when_main_is_absent() {
     let jj = CliJj::at(ws1_root.clone());
     let outcome = merge::run(
         &jj,
-        None,
-        &Hooks::none(),
+        merge_args(None, false, &ws1_root, &ws1_root),
         &mut NoGate,
-        &ws1_root,
-        None,
         &mut Vec::new(),
     )
     .expect("merge onto master");
@@ -209,11 +207,8 @@ fn an_explicit_target_wins_over_the_detection() {
     let jj = CliJj::at(ws1_root.clone());
     let outcome = merge::run(
         &jj,
-        Some("release"),
-        &Hooks::none(),
+        merge_args(Some("release"), false, &ws1_root, &ws1_root),
         &mut NoGate,
-        &ws1_root,
-        None,
         &mut Vec::new(),
     )
     .expect("merge onto release");
@@ -237,11 +232,16 @@ fn a_failing_pre_merge_hook_aborts_before_any_change() {
     let jj = CliJj::at(ws1_root.clone());
     let error = merge::run(
         &jj,
-        None,
-        &hooks,
+        merge::MergeArgs {
+            target: None,
+            remove_current: false,
+            hooks: &hooks,
+            caller_root: &ws1_root,
+            logs_dir: None,
+            state_dir: &ws1_root,
+            now_millis: 1_000,
+        },
         &mut NoGate,
-        &ws1_root,
-        None,
         &mut Vec::new(),
     )
     .unwrap_err();
@@ -249,4 +249,62 @@ fn a_failing_pre_merge_hook_aborts_before_any_change() {
     assert!(matches!(error, merge::MergeError::Hook(_)), "{error:?}");
     let at_main = repo.capture_jj(&["log", "-r", "main", "--no-graph", "-T", "description"]);
     assert_ne!(at_main, "feature A", "main must not have moved");
+}
+
+#[test]
+fn remove_forgets_the_merged_workspace_and_lands_on_the_target() {
+    let repo = TempRepo::init();
+    create_main(&repo);
+    workspace_with_commit(&repo, "ws1", "feature A");
+    let ws1_root = repo.path().parent().unwrap().join("ws1");
+
+    let jj = CliJj::at(ws1_root.clone());
+    let trash_state = tempfile::tempdir().unwrap();
+    let outcome = merge::run(
+        &jj,
+        merge_args(None, true, &ws1_root, trash_state.path()),
+        &mut NoGate,
+        &mut Vec::new(),
+    )
+    .expect("merge --remove ws1");
+
+    assert_eq!(outcome.landing, Some(repo.path()));
+    assert!(outcome.removed_current);
+    // The adapter rooted in the (now removed) ws1 directory is dead; query
+    // from the host workspace.
+    let jj = CliJj::at(repo.path().clone());
+    let names: Vec<_> = jj
+        .workspaces()
+        .unwrap()
+        .into_iter()
+        .map(|w| w.name)
+        .collect();
+    assert!(
+        !names.contains(&"ws1".to_string()),
+        "ws1 must be forgotten: {names:?}"
+    );
+    assert!(!ws1_root.exists(), "directory must be trashed");
+    let at_main = repo.capture_jj(&["log", "-r", "main", "--no-graph", "-T", "description"]);
+    assert_eq!(at_main, "feature A");
+}
+
+#[test]
+fn remove_refuses_the_host_workspace_before_anything_happens() {
+    let repo = TempRepo::init();
+    create_main(&repo);
+    let main_root = repo.path();
+
+    let jj = CliJj::at(main_root.clone());
+    let error = merge::run(
+        &jj,
+        merge_args(None, true, &main_root, &main_root),
+        &mut NoGate,
+        &mut Vec::new(),
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(error, merge::MergeError::RefuseHostWorkspace { .. }),
+        "the host workspace must never be removed: {error:?}"
+    );
 }

@@ -1,10 +1,11 @@
 //! `tt config shell …` — install/remove the shell integration.
 //!
 //! The integration is a marked block appended to the rc file: a `tt()`
-//! function that intercepts `switch` and `cd`s to the path tatami prints on
-//! stdout, passing everything else through. Completions are written as files
-//! (zsh: a fpath directory wired by the block; bash: the standard
-//! bash-completion directory), never `eval`-ed at startup.
+//! function that intercepts `switch` and `merge --remove` (both print the
+//! destination path on stdout and the wrapper `cd`s to it), passing
+//! everything else through. Completions are written as files (zsh: a fpath
+//! directory wired by the block; bash: the standard bash-completion
+//! directory), never `eval`-ed at startup.
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -22,7 +22,7 @@
 //! current workspace's working copy is always updated by jj itself.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
@@ -115,47 +115,115 @@ pub(crate) fn integrate(
         rebased,
         bookmark_moved,
         commits,
+        landing: None,
+        removed_current: false,
     })
 }
 
 /// `tt merge [cible]` — rebase (if diverged) + fast-forward the target
 /// bookmark, wrapped in the pre/post-merge hooks.
+///
+/// With `--remove`, the merged workspace is then forgotten and its directory
+/// trashed, and [`IntegrateOutcome::landing`] carries where the caller
+/// should end up (the target workspace's root, else the host root) — the
+/// shell wrapper performs the `cd`. Guard kept even in that flow: the
+/// **host** workspace is never removed (it holds the shared storage), and
+/// that refusal happens before anything mutates.
+#[derive(Debug, Clone)]
+pub struct MergeArgs<'a> {
+    pub target: Option<&'a str>,
+    pub remove_current: bool,
+    pub hooks: &'a Hooks<'a>,
+    pub caller_root: &'a Path,
+    pub logs_dir: Option<&'a Path>,
+    pub state_dir: &'a Path,
+    pub now_millis: u64,
+}
+
 pub fn run(
     jj: &dyn Jj,
-    target: Option<&str>,
-    hooks: &Hooks<'_>,
+    args: MergeArgs<'_>,
     gate: &mut dyn ApprovalGate,
-    caller_root: &Path,
-    logs_dir: Option<&Path>,
     out: &mut dyn Write,
 ) -> Result<IntegrateOutcome, MergeError> {
-    let workspace = current_workspace_name(jj)?;
+    let workspaces = super::with_stale_recovery(jj, |jj| jj.workspaces())?;
+    let current = workspaces
+        .iter()
+        .find(|w| w.is_current)
+        .ok_or(MergeError::CurrentWorkspaceNotFound)?;
+    let current_name = current.name.clone();
+    let current_root = current.root.clone();
+
+    // Refused before anything mutates: the host workspace holds the storage.
+    if args.remove_current
+        && let Some(root) = &current_root
+        && crate::state::hosts_storage(root)
+    {
+        return Err(MergeError::RefuseHostWorkspace {
+            workspace: current_name.clone(),
+            storage: root.join(".jj").join("repo"),
+        });
+    }
+
     hook::run_blocking(
         &HookContext {
             phase: HookPhase::PreMerge,
-            workspace: &workspace,
-            workspace_path: caller_root,
-            hooks,
-            logs_dir,
+            workspace: &current_name,
+            workspace_path: current_root.as_deref().unwrap_or(args.caller_root),
+            hooks: args.hooks,
+            logs_dir: args.logs_dir,
         },
         gate,
     )
     .map_err(MergeError::Hook)?;
 
-    let outcome = integrate(jj, &workspace, target, true)?;
+    let mut outcome = integrate(jj, &current_name, args.target, true)?;
 
     hook::run_detached(
         &HookContext {
             phase: HookPhase::PostMerge,
-            workspace: &workspace,
-            workspace_path: caller_root,
-            hooks,
-            logs_dir,
+            workspace: &current_name,
+            workspace_path: current_root.as_deref().unwrap_or(args.caller_root),
+            hooks: args.hooks,
+            logs_dir: args.logs_dir,
         },
         out,
         gate,
     );
+
+    if args.remove_current {
+        let landing = landing_root(jj, &outcome.target, &current_root)?;
+        outcome.landing = Some(landing.clone());
+        crate::cmd::remove::forget_and_trash(
+            jj,
+            &current_name,
+            current_root.as_deref(),
+            args.state_dir,
+            args.now_millis,
+        )?;
+        outcome.removed_current = true;
+    }
     Ok(outcome)
+}
+
+/// Where the caller should land after merging: the workspace named like the
+/// target bookmark, else the host workspace root.
+fn landing_root(
+    jj: &dyn Jj,
+    target: &str,
+    current_root: &Option<PathBuf>,
+) -> Result<PathBuf, MergeError> {
+    let workspaces = jj.workspaces()?;
+    let host = current_root
+        .as_deref()
+        .map(crate::state::host_root)
+        .transpose()
+        .map_err(MergeError::State)?;
+    Ok(workspaces
+        .iter()
+        .find(|w| w.name == target)
+        .and_then(|w| w.root.clone())
+        .unwrap_or(host.unwrap_or_else(|| PathBuf::from("."))))
 }
 
 pub(crate) fn current_workspace_name(jj: &dyn Jj) -> Result<String, MergeError> {
@@ -191,8 +259,16 @@ pub enum MergeError {
     },
     #[error("nothing to merge: workspace `{workspace}` has no non-empty commit outside `{target}`")]
     NoCommitsToMerge { workspace: String, target: String },
+    #[error(
+        "refusing to remove `{workspace}` with --remove: it hosts the shared repo storage ({storage})"
+    )]
+    RefuseHostWorkspace { workspace: String, storage: PathBuf },
     #[error(transparent)]
     Hook(#[from] HookError),
+    #[error(transparent)]
+    Remove(#[from] crate::cmd::remove::RemoveError),
+    #[error(transparent)]
+    State(#[from] crate::state::StateError),
 }
 
 #[derive(Debug)]
@@ -201,6 +277,10 @@ pub struct IntegrateOutcome {
     pub rebased: bool,
     pub bookmark_moved: bool,
     pub commits: usize,
+    /// Where the caller should land after `--remove`.
+    pub landing: Option<PathBuf>,
+    /// Set when `--remove` actually forgot the current workspace.
+    pub removed_current: bool,
 }
 
 #[cfg(test)]

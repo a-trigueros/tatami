@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use minijinja::{Environment, Value};
+use minijinja::Environment;
 use thiserror::Error;
 
 /// Template variables, keyed by name.
@@ -54,11 +54,10 @@ pub fn render(template: &str, vars: &TemplateVars) -> Result<String, TemplateErr
     environment.add_filter("sanitize_db", sanitize_db_filter);
     environment.add_filter(
         "codename",
-        |_value: Value, _count: Option<u64>| -> Result<String, minijinja::Error> {
-            Err(minijinja::Error::new(
-                minijinja::ErrorKind::InvalidOperation,
-                "the codename filter is not implemented in tatami yet",
-            ))
+        |value: String, count: Option<u64>| -> Result<String, minijinja::Error> {
+            codename(&value, count).map_err(|message| {
+                minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, message)
+            })
         },
     );
     environment.render_str(template, &vars.0).map_err(|source| {
@@ -125,6 +124,51 @@ fn hash_base36(value: &str) -> String {
     digits.into_iter().rev().collect()
 }
 
+/// `codename` — deterministic petname from the input (worktrunk parity of
+/// intent: same medium word lists from the `petname` crate, `n - 1`
+/// adjectives then a noun, hyphen-joined; repeated adjectives avoided).
+/// shortcut: the word *selection* hash is tatami's FNV-1a, not bit-identical
+/// to worktrunk's — same guarantees, different names.
+fn codename(value: &str, count: Option<u64>) -> Result<String, String> {
+    let count = count.unwrap_or(2).clamp(1, 8);
+    let petnames = petname::lang::english::Petnames::medium();
+    let adjectives = petnames.adjectives.as_ref();
+    let nouns = petnames.nouns.as_ref();
+    if adjectives.is_empty() || nouns.is_empty() {
+        return Err("petname word lists are empty".to_string());
+    }
+
+    let mut hash = fnv1a(value);
+    let mut words: Vec<&str> = Vec::with_capacity(count as usize);
+    let mut used_adjectives: Vec<usize> = Vec::new();
+    for _ in 0..count.saturating_sub(1) {
+        let mut index = (hash as usize) % adjectives.len();
+        // Avoid repeats where possible: advance until an unused word shows up
+        // (bounded by the list length).
+        for _ in 0..adjectives.len() {
+            if !used_adjectives.contains(&index) {
+                break;
+            }
+            index = (index + 1) % adjectives.len();
+        }
+        used_adjectives.push(index);
+        words.push(adjectives[index]);
+        hash = hash.wrapping_mul(0x100_0000_01b3).wrapping_add(1);
+    }
+    let noun_index = (hash as usize) % nouns.len();
+    words.push(nouns[noun_index]);
+    Ok(words.join("-"))
+}
+
+fn fnv1a(value: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in value.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    hash
+}
+
 #[cfg(test)]
 mod render_should {
     use super::*;
@@ -183,10 +227,28 @@ mod render_should {
 
     #[test]
     fn fails_with_a_clear_error_on_the_unimplemented_codename_filter() {
-        let error = render("{{ x | codename }}", &TemplateVars::new()).unwrap_err();
-        assert!(
-            matches!(error, TemplateError::UnsupportedFilter { .. }),
-            "got: {error:?}"
-        );
+        // codename est implémenté; ce test vérifie plutôt le contrat.
+        let first = render("{{ x | codename }}", &vars_x());
+        let second = render("{{ x | codename }}", &vars_x());
+        match (first, second) {
+            (Ok(a), Ok(b)) => {
+                assert_eq!(a, b, "codename is deterministic");
+                assert!(a.contains('-'), "n-1 adjectives + 1 noun: {a:?}");
+                assert!(!a.contains(' '), "hyphen-joined: {a:?}");
+            }
+            (Err(e), _) | (_, Err(e)) => panic!("codename failed: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn codename_honors_the_word_count() {
+        let rendered = render("{{ x | codename(3) }}", &vars_x()).unwrap();
+        assert_eq!(rendered.matches('-').count(), 2, "3 words: {rendered:?}");
+    }
+
+    fn vars_x() -> TemplateVars {
+        let mut vars = TemplateVars::new();
+        vars.insert("x", "seed".to_string());
+        vars
     }
 }

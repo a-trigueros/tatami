@@ -170,7 +170,7 @@ fn main() {
                 outcome.commits, outcome.target
             );
         }
-        Command::Merge { target } => {
+        Command::Merge { target, remove } => {
             let dir = std::env::current_dir().unwrap_or_else(|error| {
                 eprintln!("tatami: cannot determine the current directory: {error}");
                 std::process::exit(1);
@@ -209,17 +209,25 @@ fn main() {
             });
             let outcome = cmd::merge::run(
                 &jj::CliJj::at(dir.clone()),
-                target.as_deref(),
-                &hooks,
+                cmd::merge::MergeArgs {
+                    target: target.as_deref(),
+                    remove_current: remove,
+                    hooks: &hooks,
+                    caller_root: &dir,
+                    logs_dir: Some(&state_dir.join("logs")),
+                    state_dir: &state_dir,
+                    now_millis: now_millis(),
+                },
                 &mut gate,
-                &dir,
-                Some(&state_dir.join("logs")),
                 &mut std::io::stderr(),
             )
             .unwrap_or_else(|error| {
                 eprintln!("tatami: {error}");
                 std::process::exit(1);
             });
+            if let Some(landing) = outcome.landing {
+                println!("{}", landing.display());
+            }
             println!(
                 "merged {} commit(s) into `{}`{}",
                 outcome.commits,
