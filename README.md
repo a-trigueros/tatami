@@ -32,7 +32,8 @@ cargo install --path .
 tatami n'écrit jamais dans vos rc : il **imprime** le bloc à coller.
 
 ```text
-tatami config shell init          # imprime le bloc (zsh ou bash, détecté via $SHELL, --shell pour forcer)
+tatami config shell init          # imprime le bloc (zsh ou bash, détecté via $SHELL)
+tatami config shell init zsh      # shell explicite (zsh ou bash)
 ```
 
 Ajoutez le bloc affiché à votre rc — ou une seule ligne :

@@ -180,7 +180,6 @@ pub enum ShellCommand {
     /// to your rc file — tatami never writes rc files itself
     Init {
         /// Target shell (zsh, bash); defaults to $SHELL
-        #[arg(long)]
         shell: Option<String>,
     },
     /// Print the completion script for the given shell

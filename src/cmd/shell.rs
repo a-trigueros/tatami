@@ -79,7 +79,9 @@ pub fn completion(shell: &str) -> Result<String, ShellError> {
 pub enum ShellError {
     #[error("shell `{requested}` is not supported (try zsh or bash)")]
     UnsupportedShell { requested: String },
-    #[error("cannot detect the shell — pass `--shell zsh|bash` (or set $SHELL)")]
+    #[error(
+        "cannot detect the shell — pass one: `tatami config shell init zsh|bash` (or set $SHELL)"
+    )]
     NoShellDetected,
 }
 
@@ -231,6 +233,40 @@ mod shell_should {
             env.resolve_shell(None),
             Err(ShellError::NoShellDetected)
         ));
+    }
+
+    #[test]
+    fn the_commands_the_output_references_are_recognized_by_the_cli() {
+        // The block's header and source line tell the user to run concrete
+        // commands; every one of them must parse, or shell startup breaks.
+        for shell in [Shell::Zsh, Shell::Bash] {
+            let block = integration_block(shell);
+            let label = shell.label();
+
+            // `eval "$(tatami config shell init zsh)"` from the header.
+            Cli::command()
+                .try_get_matches_from(["tatami", "config", "shell", "init", label])
+                .unwrap_or_else(|error| {
+                    panic!("init must accept a positional shell: {error}");
+                });
+
+            // The exact `source <(...)` line emitted by the block.
+            let source_line = block
+                .lines()
+                .find(|line| line.starts_with("source <("))
+                .unwrap_or_else(|| panic!("no source line in the {label} block"));
+            let command = source_line
+                .trim_start_matches("source <(")
+                .trim_end_matches(')');
+            let argv: Vec<&str> = std::iter::once("tatami")
+                .chain(command.split_whitespace())
+                .collect();
+            Cli::command()
+                .try_get_matches_from(&argv)
+                .unwrap_or_else(|error| {
+                    panic!("the block references `{command}`, which the CLI rejects: {error}");
+                });
+        }
     }
 
     #[test]
