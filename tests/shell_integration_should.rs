@@ -97,6 +97,14 @@ fn the_pasted_wrapper_cds_to_the_switched_workspace() {
             "{interpreter} failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+        // The block sources completions dynamically; a wrong command path
+        // would print clap's error here without failing the cd (regression
+        // guard: the completion wiring must not error at shell startup).
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("unrecognized subcommand"),
+            "{interpreter} startup errors: {stderr:?}"
+        );
         let stdout = String::from_utf8_lossy(&output.stdout);
         let last_line = stdout.lines().last().expect("pwd output");
         assert_eq!(

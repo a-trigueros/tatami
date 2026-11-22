@@ -111,7 +111,7 @@ fn integration_block(shell: Shell) -> String {
              fi\n  \
              command tatami \"$@\"\n\
              }}\n\
-             source <(tatami config completion zsh){footer}"
+             source <(tatami config shell completion zsh){footer}"
         ),
         Shell::Bash => format!(
             "{header}\n\
@@ -125,7 +125,7 @@ fn integration_block(shell: Shell) -> String {
              fi\n  \
              command tatami \"$@\"\n\
              }}\n\
-             source <(tatami config completion bash){footer}"
+             source <(tatami config shell completion bash){footer}"
         ),
     }
 }
@@ -185,12 +185,22 @@ mod shell_should {
     }
 
     #[test]
-    fn wires_completions_dynamically_for_both_shells() {
+    fn wires_completions_with_the_full_config_shell_completion_path() {
+        // Regression: the block once emitted `tatami config completion …`,
+        // which clap rejects (`unrecognized subcommand`) at every shell start.
         for shell in [Shell::Zsh, Shell::Bash] {
             let block = integration_block(shell);
             assert!(
-                block.contains(&format!("tatami config completion {}", shell.label())),
+                block.contains(&format!(
+                    "source <(tatami config shell completion {})",
+                    shell.label()
+                )),
                 "{:?} block must source its completions: {block:?}",
+                shell.label()
+            );
+            assert!(
+                !block.contains("tatami config completion"),
+                "{:?} block must not use the wrong path: {block:?}",
                 shell.label()
             );
         }
