@@ -247,12 +247,18 @@ Notes épinglées (jj 0.47.1 + shells) :
 - [x] **jj exclut automatiquement les nested workspaces du snapshot** du
       workspace englobant (vérifié 0.47.1 : `jj st` propre avec `.wt/inner`
       existant) → template in-repo sûr sans configuration
-- [ ] `tt remove <nom>` : refus du workspace courant (tatami ne déplace
-      personne), refus dur du workspace **hôte** (PLAN §5), `jj workspace
-      forget` + rm du répertoire, `--delete-bookmark`, poubelle différée ;
-      pas de `--force` anti-« dirty » : le working copy jj est toujours un
-      commit — le contrôle d'intégration (commits non fusionnés) vient avec
-      M3 où la résolution du bookmark principal sera de toute façon nécessaire
+- [x] `tt remove <nom>` : refus du workspace courant (tatami ne déplace
+      personne), refus dur du workspace **hôte** (détecté via
+      `state::hosts_storage` — `.jj/repo` dossier vs pointeur ; PLAN §5),
+      `jj workspace forget` + répertoire déplacé dans
+      `<state_dir>/trash/<nom>-<millis>` (**poubelle** : les fichiers ignorés
+      type `.env` n'existent que là ; EXDEV = suppression en place), horloge
+      injectée (`now_millis`), `--delete-bookmark` (jj sort 0 sur un bookmark
+      absent → le booléen de suppression réelle se lit dans le stderr de jj,
+      flag `shortcut:`) ; pas de `--force` anti-« dirty » : le working copy jj
+      est toujours un commit — le contrôle d'intégration (commits non
+      fusionnés) vient avec M3 où la résolution du bookmark principal sera de
+      toute façon nécessaire
 - [ ] Hooks pre/post-start + approbations (slice dédiée) : ordre sourcé
       worktrunk = pre-switch (bloquant) → création → switch → pre-start
       (bloquant) → post-start (arrière-plan) + post-switch ; `copy-ignored`

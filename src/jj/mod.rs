@@ -27,6 +27,16 @@ pub trait Jj {
     /// workspace's working-copy commit. A fresh `@` is empty; jj warns about
     /// it and succeeds.
     fn bookmark_create(&self, name: &str, workspace: &str) -> Result<(), JjError>;
+
+    /// Stops tracking a workspace. jj leaves its directory untouched —
+    /// removal of the directory is the caller's decision.
+    fn workspace_forget(&self, name: &str) -> Result<(), JjError>;
+
+    /// Deletes a local bookmark. Deleting an absent bookmark succeeds in jj
+    /// (warning only); the returned bool says whether one was actually
+    /// deleted. shortcut: detected via jj's stderr string
+    /// "No matching bookmarks" — revalidate on jj upgrades.
+    fn bookmark_delete(&self, name: &str) -> Result<bool, JjError>;
 }
 
 /// Working-copy commit status of a workspace, as jj sees it.
@@ -73,8 +83,8 @@ impl CliJj {
     }
 
     /// Runs `jj <args>` from the adapter's working directory and returns the
-    /// trimmed stdout on success.
-    fn run(&self, args: &[&str]) -> Result<String, JjError> {
+    /// trimmed stdout and stderr on success.
+    fn execute(&self, args: &[&str]) -> Result<(String, String), JjError> {
         let output = Command::new("jj")
             .args(args)
             .current_dir(&self.working_dir)
@@ -87,7 +97,18 @@ impl CliJj {
                 stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
             });
         }
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        Ok((
+            String::from_utf8_lossy(&output.stdout).trim().to_string(),
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ))
+    }
+
+    fn run(&self, args: &[&str]) -> Result<String, JjError> {
+        self.execute(args).map(|(stdout, _)| stdout)
+    }
+
+    fn run_with_stderr(&self, args: &[&str]) -> Result<(String, String), JjError> {
+        self.execute(args)
     }
 }
 
@@ -150,6 +171,16 @@ impl Jj for CliJj {
     fn bookmark_create(&self, name: &str, workspace: &str) -> Result<(), JjError> {
         self.run(&["bookmark", "create", name, "-r", &format!("{workspace}@")])?;
         Ok(())
+    }
+
+    fn workspace_forget(&self, name: &str) -> Result<(), JjError> {
+        self.run(&["workspace", "forget", name])?;
+        Ok(())
+    }
+
+    fn bookmark_delete(&self, name: &str) -> Result<bool, JjError> {
+        let (_stdout, stderr) = self.run_with_stderr(&["bookmark", "delete", name])?;
+        Ok(!stderr.contains("No matching bookmarks"))
     }
 }
 

@@ -28,6 +28,15 @@ pub enum Command {
         #[arg(long)]
         create: bool,
     },
+    /// Forget a workspace and move its directory to the tatami trash
+    Remove {
+        /// Workspace to remove (cannot be the current one or the host of the
+        /// shared repo storage)
+        name: String,
+        /// Also delete the namesake bookmark
+        #[arg(long = "delete-bookmark")]
+        delete_bookmark: bool,
+    },
     /// Inspect tatami configuration
     Config {
         #[command(subcommand)]

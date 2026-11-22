@@ -57,6 +57,42 @@ fn main() {
             });
             println!("{}", destination.display());
         }
+        Command::Remove {
+            name,
+            delete_bookmark,
+        } => {
+            let dir = std::env::current_dir().unwrap_or_else(|error| {
+                eprintln!("tatami: cannot determine the current directory: {error}");
+                std::process::exit(1);
+            });
+            let state_dir = state::state_dir(&dir).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let report = cmd::remove::run(
+                &jj::CliJj::at(dir),
+                cmd::remove::RemoveArgs {
+                    name: &name,
+                    delete_bookmark,
+                    now_millis: now_millis(),
+                    state_dir: &state_dir,
+                },
+            )
+            .unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            println!("removed workspace `{}`", report.name);
+            if report.bookmark_deleted {
+                println!("bookmark deleted");
+            }
+            match report.directory {
+                cmd::remove::DirectoryOutcome::Trashed(path) => {
+                    println!("directory moved to trash: {}", path.display());
+                }
+                cmd::remove::DirectoryOutcome::AlreadyGone => {}
+            }
+        }
         Command::Config { command } => match command {
             ConfigCommand::Show => {
                 let env = paths::ConfigEnv::from_env().unwrap_or_else(|error| {
@@ -101,4 +137,12 @@ fn shell_env() -> cmd::shell::ShellEnv {
         std::process::exit(1);
     });
     cmd::shell::ShellEnv::from_config_env(&config, std::env::var("SHELL").ok())
+}
+
+/// The injected clock for trash naming. One read, at the boundary.
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }

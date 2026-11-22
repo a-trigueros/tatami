@@ -118,6 +118,14 @@ pub fn state_dir(workspace_root: &Path) -> Result<PathBuf, StateError> {
     Ok(host_root.join(".jj").join("tatami"))
 }
 
+/// True when `workspace_root` hosts the shared repo storage — the workspace
+/// whose `.jj/repo` is the real directory, not a pointer file. Removing such
+/// a workspace's directory would destroy the storage every other workspace
+/// points to.
+pub fn hosts_storage(workspace_root: &Path) -> bool {
+    workspace_root.join(".jj").join("repo").is_dir()
+}
+
 #[derive(Debug, Error)]
 pub enum StateError {
     /// Not a workspace at all (no `.jj/repo`, neither directory nor pointer).
@@ -218,6 +226,34 @@ mod state_dir_should {
             matches!(error, StateError::DanglingPointer { .. }),
             "expected DanglingPointer, got: {error:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod hosts_storage_should {
+    use super::*;
+
+    fn mkdir_all(path: &Path) {
+        fs::create_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn recognizes_the_hosting_workspace_by_its_real_repo_dir() {
+        let parent = tempfile::tempdir().unwrap();
+        let main = parent.path().join("main");
+        let ws2 = parent.path().join("ws2");
+        mkdir_all(&main.join(".jj/repo"));
+        mkdir_all(&ws2.join(".jj"));
+        fs::write(ws2.join(".jj/repo"), "../main/.jj/repo").unwrap();
+
+        assert!(hosts_storage(&main));
+        assert!(!hosts_storage(&ws2));
+    }
+
+    #[test]
+    fn answers_false_outside_any_workspace() {
+        let empty = tempfile::tempdir().unwrap();
+        assert!(!hosts_storage(empty.path()));
     }
 }
 

@@ -210,6 +210,14 @@ mod switch_should {
         fn bookmark_create(&self, _name: &str, _workspace: &str) -> Result<(), JjError> {
             panic!("FakeJj::bookmark_create is not exercised by switch tests")
         }
+
+        fn workspace_forget(&self, _name: &str) -> Result<(), JjError> {
+            panic!("FakeJj::workspace_forget is not exercised by switch tests")
+        }
+
+        fn bookmark_delete(&self, _name: &str) -> Result<bool, JjError> {
+            panic!("FakeJj::bookmark_delete is not exercised by switch tests")
+        }
     }
 
     struct FakeState {
