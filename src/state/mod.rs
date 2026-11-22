@@ -234,8 +234,12 @@ mod state_dir_should {
         mkdir_all(&parent.path().join("ws2/.jj"));
         fs::write(parent.path().join("ws2/.jj/repo"), "../../main/.jj/repo").unwrap();
         // The contract requires canonical workspace roots (as jj reports).
-        let main = parent.path().join("main").canonicalize().unwrap();
-        let ws2 = parent.path().join("ws2").canonicalize().unwrap();
+        // Canonicalize, then simplify: verbatim (`\\?\…`) on Windows, plain
+        // elsewhere — matching what state_dir returns.
+        let main =
+            dunce::simplified(&parent.path().join("main").canonicalize().unwrap()).to_path_buf();
+        let ws2 =
+            dunce::simplified(&parent.path().join("ws2").canonicalize().unwrap()).to_path_buf();
 
         let state = state_dir(&ws2).unwrap();
 
