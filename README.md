@@ -28,6 +28,10 @@ cargo install --locked --git https://github.com/a-trigueros/tatami
 cargo install --path .
 ```
 
+Un **binaire Windows expérimental** (`x86_64-pc-windows-msvc`) est publié en
+release GitHub : le binaire fonctionne mais il n'y a pas d'intégration shell —
+`tt switch` imprime la destination, le `cd` est manuel.
+
 ## Intégration shell
 
 tatami n'écrit jamais dans vos rc : il **imprime** le bloc à coller.

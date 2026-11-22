@@ -129,8 +129,6 @@ fn trash(
     name: &str,
     now_millis: u64,
 ) -> Result<PathBuf, RemoveError> {
-    // Unix errno EXDEV (18): rename(2) across filesystems.
-    const EXDEV: i32 = 18;
     let trash_dir = state_dir.join("trash");
     fs::create_dir_all(&trash_dir).map_err(|source| RemoveError::Io { source })?;
     // Sanitized: a workspace named `feat/test` must not need a `trash/feat/`
@@ -140,12 +138,19 @@ fn trash(
         Ok(()) => Ok(destination),
         // Cross-device move: no trash, delete in place (data-loss risk for
         // ignored files only — tracked history lives in the repo).
-        Err(source) if source.raw_os_error() == Some(EXDEV) => {
+        Err(source) if is_cross_device(&source) => {
             fs::remove_dir_all(root).map_err(|source| RemoveError::Io { source })?;
             Ok(destination)
         }
         Err(source) => Err(RemoveError::Io { source }),
     }
+}
+
+/// rename(2) across filesystems: errno EXDEV (18) on Unix;
+/// `CrossesDevices` normalizes the platform codes (Windows reports
+/// ERROR_NOT_SAME_DEVICE, whose raw value is not 18).
+fn is_cross_device(source: &std::io::Error) -> bool {
+    source.kind() == std::io::ErrorKind::CrossesDevices || source.raw_os_error() == Some(18)
 }
 
 #[derive(Debug)]
@@ -523,6 +528,18 @@ mod remove_should {
             jj.bookmark_delete_calls.borrow().is_empty(),
             "--keep-bookmark must not call bookmark delete"
         );
+    }
+
+    #[test]
+    fn cross_device_errors_are_detected_across_platforms() {
+        // Unix errno + normalized kind (Windows reports ERROR_NOT_SAME_DEVICE,
+        // raw 17 — not 18).
+        assert!(is_cross_device(&std::io::Error::from_raw_os_error(18)));
+        assert!(is_cross_device(&std::io::Error::from(
+            std::io::ErrorKind::CrossesDevices
+        )));
+        assert!(!is_cross_device(&std::io::Error::from_raw_os_error(2)));
+        assert!(!is_cross_device(&std::io::Error::other("nope")));
     }
 
     #[test]

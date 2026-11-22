@@ -21,6 +21,11 @@ jobs:
             target: aarch64-apple-darwin
           - os: macos-13
             target: x86_64-apple-darwin
+          # EXPERIMENTAL: binary only — no shell integration, no tests on
+          # Windows yet (switch prints the destination; cd is manual).
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: tatami.exe
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -34,10 +39,13 @@ jobs:
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Package
+        shell: bash
         run: |
+          BIN="${{ matrix.bin }}"
+          BIN="${BIN:-tatami}"
           NAME="tatami-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "$NAME"
-          cp "target/${{ matrix.target }}/release/tatami" "$NAME/"
+          cp "target/${{ matrix.target }}/release/$BIN" "$NAME/"
           cp README.md LICENSE "$NAME/"
           tar -czf "$NAME.tar.gz" "$NAME"
           sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256"

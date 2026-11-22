@@ -52,3 +52,16 @@ jobs:
       # Fast tier only: no verified aarch64 asset name for the musl-style
       # direct download; the Linux job proves the jj contracts.
       - run: cargo test --lib
+
+  # Compile-only guarantee for the experimental Windows binary (no Windows
+  # tests yet): catches non-portable code before a release build. Lib+bin
+  # only — test targets require cargo test's CARGO_BIN_EXE_* env at compile
+  # time and are unix-oriented.
+  check-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - run: cargo check --locked --target x86_64-pc-windows-msvc
