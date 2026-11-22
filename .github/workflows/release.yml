@@ -17,9 +17,12 @@ jobs:
           # Static musl build: runs anywhere glibc-free (Alpine, containers…).
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
+          # Both darwin targets build on the arm64 runner: the macOS SDK is
+          # universal, so cross-compiling x86_64 needs no extra toolchain.
+          # (The macos-13 Intel runners are deprecated and queue forever.)
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
           # EXPERIMENTAL: binary only — no shell integration (the tt wrapper
           # is zsh/bash); integration tests do run on Windows in CI.
@@ -71,6 +74,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -la dist
+          # Re-runs may find a partial release from a cancelled earlier attempt.
+          gh release delete "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --yes || true
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" --generate-notes \
             dist/*
