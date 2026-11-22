@@ -214,25 +214,24 @@ fn complete_serves_workspace_names_for_the_scripts() {
     repo.add_workspace("ws2");
 
     let run_complete = |target: &str| {
-        Command::new(env!("CARGO_BIN_EXE_tatami"))
+        let output = Command::new(env!("CARGO_BIN_EXE_tatami"))
             .args(["__complete", target])
             .current_dir(repo.path())
             .env("JJ_CONFIG", repo.jj_config_path())
             .output()
-            .expect("run __complete")
+            .expect("run __complete");
+        String::from_utf8_lossy(&output.stdout).into_owned()
     };
 
-    let stdout = String::from_utf8_lossy(&run_complete("switch").stdout);
     assert_eq!(
-        stdout.lines().collect::<Vec<_>>(),
+        run_complete("switch").lines().collect::<Vec<_>>(),
         vec!["default", "ws2"],
         "switch completes every workspace, sorted"
     );
 
     // Standing in the host workspace, `remove` must not offer it.
-    let stdout = String::from_utf8_lossy(&run_complete("remove").stdout);
     assert_eq!(
-        stdout.lines().collect::<Vec<_>>(),
+        run_complete("remove").lines().collect::<Vec<_>>(),
         vec!["ws2"],
         "remove excludes the current workspace"
     );
