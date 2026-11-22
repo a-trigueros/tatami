@@ -39,7 +39,21 @@ pub fn run(
         // `Cannot access … No such file or directory` otherwise).
         fs::create_dir_all(parent).map_err(|source| CreateError::Io { source })?;
     }
-    crate::cmd::with_stale_recovery(jj, |jj| jj.workspace_add(name, &destination))?;
+    // Pass the destination RELATIVE to jj's cwd (= current_root): on Windows,
+    // an absolute destination is verbatim-ized by jj (`\\?\C:\…`) and the
+    // internal `git worktree add` then fails to create it (pinned 0.47.1,
+    // observed on the runner). Relative form: inside current_root directly,
+    // otherwise relative to its parent (the sibling default layout).
+    let jj_destination = destination
+        .strip_prefix(current_root)
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|_| {
+            destination
+                .strip_prefix(current_root.parent().unwrap_or(current_root))
+                .map(|p| PathBuf::from("..").join(p))
+                .unwrap_or_else(|_| destination.clone())
+        });
+    crate::cmd::with_stale_recovery(jj, |jj| jj.workspace_add(name, &jj_destination))?;
     jj.bookmark_create(name, name)?;
 
     // Worktrunk-sourced order: creation → pre-start (blocking) → post-start
