@@ -162,7 +162,11 @@ mod user_config_candidates_should {
     }
 
     #[test]
+    #[cfg(unix)]
     fn honors_an_absolute_xdg_config_home() {
+        // XDG_CONFIG_HOME is a Unix convention; on Windows "/xdg" carries no
+        // drive prefix, so Path::is_absolute is false and the branch the test
+        // exercises cannot exist there.
         let candidates = env("/home/u", Some("/xdg"), None).user_config_candidates();
         assert_eq!(candidates[0].1, PathBuf::from("/xdg/tatami/config.toml"));
     }

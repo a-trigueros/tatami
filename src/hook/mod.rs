@@ -441,8 +441,11 @@ mod hook_should {
     #[test]
     fn expands_the_workspace_variables() {
         let (_dir, cwd) = scratch();
-        let user =
-            user_config("pre-start = \"echo {{ workspace }} at {{ workspace_path }} > out.txt\"");
+        let user = user_config(
+            // The path segment is quoted: sh would otherwise eat the
+            // backslashes of a Windows workspace path.
+            "pre-start = \"echo {{ workspace }} at '{{ workspace_path }}' > out.txt\"",
+        );
         let hooks = Hooks {
             user: Some(&user),
             project: None,
@@ -581,12 +584,12 @@ mod hook_should {
 
         // The child runs concurrently; poll briefly for its side effect.
         let mut seen = false;
-        for _ in 0..50 {
+        for _ in 0..200 {
             if cwd.join("post.txt").exists() {
                 seen = true;
                 break;
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(std::time::Duration::from_millis(25));
         }
         assert!(seen, "detached command never produced its file");
     }
@@ -611,9 +614,10 @@ mod hook_should {
 
         run_detached(&ctx, &mut Vec::new(), &mut gate);
 
-        // The detached child runs concurrently; poll briefly for its trace.
+        // The child runs concurrently; poll generously — a cold Git Bash
+        // sh.exe can take over a second to start (Windows).
         let mut found = None;
-        for _ in 0..50 {
+        for _ in 0..200 {
             let mut entries: Vec<PathBuf> = std::fs::read_dir(logs.path())
                 .into_iter()
                 .flatten()
@@ -627,7 +631,7 @@ mod hook_should {
                     break;
                 }
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(std::time::Duration::from_millis(25));
         }
         assert!(found.is_some(), "no log file captured the hook output");
     }
