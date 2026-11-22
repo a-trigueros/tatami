@@ -329,9 +329,8 @@ fn execute_detached(
     for (index, (_name, command)) in entries(spec).into_iter().enumerate() {
         let rendered = ctx.render(&command)?;
         let mut process = Command::new("sh");
+        let mut command_line = rendered.clone();
         process
-            .arg("-c")
-            .arg(&rendered)
             .current_dir(cwd)
             // Detached: the child must never wait on the caller's stdin
             // (a spawned test/daemon process has no usable console on
@@ -348,8 +347,18 @@ fn execute_detached(
                 .open(&log_path)
             {
                 Ok(log) => {
+                    // Handles cover Unix; the sh-side redirect covers Windows,
+                    // where msys sh does not reliably write to inherited file
+                    // handles (empty logs observed on the runner). The command
+                    // writes through the inner redirect, so the two paths do
+                    // not interleave.
                     process.stdout(log.try_clone().expect("log fd clone"));
                     process.stderr(log);
+                    // Forward slashes: msys sh accepts them, backslashes
+                    // inside a quoted redirect target are less predictable.
+                    let target = log_path.display().to_string().replace('\\', "/");
+                    let quoted = target.replace('\'', r"'\''");
+                    command_line.push_str(&format!(" >> '{quoted}' 2>&1"));
                 }
                 Err(source) => {
                     return Err(HookError::Log {
@@ -360,6 +369,7 @@ fn execute_detached(
                 }
             }
         }
+        process.arg("-c").arg(&command_line);
         process.spawn().map_err(|source| HookError::Spawn {
             phase: ctx.phase.config_key(),
             command: rendered,
