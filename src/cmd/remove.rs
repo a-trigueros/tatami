@@ -67,6 +67,7 @@ pub fn run(
                 workspace: args.name,
                 workspace_path: root,
                 hooks: args.hooks,
+                logs_dir: Some(&args.state_dir.join("logs")),
             },
             gate,
         )
@@ -93,6 +94,7 @@ pub fn run(
             workspace: args.name,
             workspace_path: args.caller_root,
             hooks: args.hooks,
+            logs_dir: Some(&args.state_dir.join("logs")),
         },
         out,
         gate,

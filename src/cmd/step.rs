@@ -26,6 +26,7 @@ pub fn commit(
     hooks: &Hooks<'_>,
     gate: &mut dyn ApprovalGate,
     caller_root: &Path,
+    logs_dir: Option<&Path>,
     out: &mut dyn Write,
 ) -> Result<(), StepError> {
     let workspace = merge::current_workspace_name(jj)?;
@@ -35,6 +36,7 @@ pub fn commit(
             workspace: &workspace,
             workspace_path: caller_root,
             hooks,
+            logs_dir: None,
         },
         gate,
     )
@@ -48,6 +50,7 @@ pub fn commit(
             workspace: &workspace,
             workspace_path: caller_root,
             hooks,
+            logs_dir,
         },
         out,
         gate,

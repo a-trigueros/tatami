@@ -1,11 +1,34 @@
 //! `tt list` — all workspaces with their working-copy status.
 
+use std::io::Write;
+
+use crate::cmd::with_stale_recovery;
 use crate::jj::{Jj, JjError, WorkspaceInfo};
 
-pub fn run(jj: &dyn Jj) -> Result<(), JjError> {
-    let workspaces = jj.workspaces()?;
-    let rows: Vec<ListRow> = workspaces.iter().map(display_row).collect();
-    print!("{}", render(&rows));
+/// Output format for [`run`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Format {
+    #[default]
+    Text,
+    Json,
+}
+
+pub fn run(jj: &dyn Jj, format: Format, out: &mut dyn Write) -> Result<(), JjError> {
+    let workspaces = with_stale_recovery(jj, |jj| jj.workspaces())?;
+    match format {
+        Format::Json => {
+            writeln!(
+                out,
+                "{}",
+                serde_json::to_string_pretty(&workspaces).expect("workspaces are serializable")
+            )
+            .map_err(|source| JjError::OutputWrite { source })?;
+        }
+        Format::Text => {
+            let rows: Vec<ListRow> = workspaces.iter().map(display_row).collect();
+            write!(out, "{}", render(&rows)).map_err(|source| JjError::OutputWrite { source })?;
+        }
+    }
     Ok(())
 }
 
@@ -267,5 +290,110 @@ mod render_should {
     #[test]
     fn renders_nothing_for_no_rows() {
         assert_eq!(render(&[]), "");
+    }
+}
+
+#[cfg(test)]
+mod format_should {
+    use super::*;
+    use crate::jj::WcStatus;
+
+    #[test]
+    fn json_output_is_an_array_of_serialized_workspaces() {
+        struct OneWorkspace;
+        impl Jj for OneWorkspace {
+            fn workspace_root(&self) -> Result<std::path::PathBuf, JjError> {
+                unimplemented!()
+            }
+
+            fn workspaces(&self) -> Result<Vec<WorkspaceInfo>, JjError> {
+                Ok(vec![WorkspaceInfo {
+                    name: "ws1".to_string(),
+                    root: Some(std::path::PathBuf::from("/repo/ws1")),
+                    is_current: false,
+                    wc: WcStatus {
+                        change: "szyooy".to_string(),
+                        description: "hello".to_string(),
+                        empty: true,
+                        conflict: false,
+                        divergent: false,
+                    },
+                }])
+            }
+
+            fn workspace_add(
+                &self,
+                _name: &str,
+                _destination: &std::path::Path,
+            ) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
+            fn bookmark_create(&self, _name: &str, _workspace: &str) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
+            fn workspace_forget(&self, _name: &str) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
+            fn bookmark_delete(&self, _name: &str) -> Result<bool, JjError> {
+                unimplemented!()
+            }
+
+            fn bookmark_names(&self) -> Result<Vec<String>, JjError> {
+                unimplemented!()
+            }
+
+            fn bookmark_commit_id(&self, _name: &str) -> Result<String, JjError> {
+                unimplemented!()
+            }
+
+            fn revset_count(&self, _revset: &str) -> Result<usize, JjError> {
+                unimplemented!()
+            }
+
+            fn revset_commit_ids(&self, _revset: &str) -> Result<Vec<String>, JjError> {
+                unimplemented!()
+            }
+
+            fn rebase(&self, _source: &str, _destination: &str) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
+            fn bookmark_set(&self, _name: &str, _revision: &str) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
+            fn workspace_update_stale(&self) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
+            fn commit(&self, _message: &str) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
+            fn squash(&self) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
+            fn push_bookmark(&self, _name: &str) -> Result<(), JjError> {
+                unimplemented!()
+            }
+
+            fn diff(&self) -> Result<String, JjError> {
+                unimplemented!()
+            }
+        }
+
+        let mut out = Vec::new();
+        run(&OneWorkspace, Format::Json, &mut out).unwrap();
+
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(
+            rendered.contains("\"name\": \"ws1\"")
+                && rendered.contains("\"description\": \"hello\""),
+            "json was: {rendered:?}"
+        );
     }
 }

@@ -29,6 +29,8 @@ pub struct SwitchArgs<'a> {
     pub hooks: &'a Hooks<'a>,
     pub current_root: &'a Path,
     pub home: &'a Path,
+    /// Where detached-hook output is logged.
+    pub logs_dir: Option<&'a Path>,
 }
 
 pub fn run(
@@ -53,7 +55,10 @@ pub fn run(
                 args.hooks.user.and_then(|u| u.workspace_path()),
                 args.current_root,
                 args.home,
-                args.hooks,
+                crate::hook::HookParts {
+                    hooks: args.hooks,
+                    logs_dir: args.logs_dir,
+                },
                 gate,
             )?;
             // Re-list: the fresh workspace must exist before we switch to it.
@@ -81,6 +86,7 @@ pub fn run(
                 workspace: &current.name,
                 workspace_path: current.root.as_deref().unwrap_or(args.current_root),
                 hooks: args.hooks,
+                logs_dir: args.logs_dir,
             },
             menu_out,
             gate,
@@ -96,6 +102,7 @@ pub fn run(
             workspace: &current.name,
             workspace_path: args.current_root,
             hooks: args.hooks,
+            logs_dir: args.logs_dir,
         },
         gate,
     )
@@ -110,6 +117,7 @@ pub fn run(
             workspace: &target.name,
             workspace_path: target.root.as_deref().unwrap_or(args.current_root),
             hooks: args.hooks,
+            logs_dir: args.logs_dir,
         },
         menu_out,
         gate,
@@ -381,6 +389,7 @@ mod switch_should {
                 hooks: &hooks,
                 current_root: Path::new("/repo/default"),
                 home: Path::new("/home/u"),
+                logs_dir: None,
             },
             state,
             input,
@@ -418,6 +427,7 @@ mod switch_should {
                 hooks: &hooks,
                 current_root: Path::new("/repo/default"),
                 home: Path::new("/home/u"),
+                logs_dir: None,
             },
             &FakeState::empty(),
             "",
@@ -444,6 +454,7 @@ mod switch_should {
                 hooks: &hooks,
                 current_root: scratch.path(),
                 home: Path::new("/home/u"),
+                logs_dir: None,
             },
             &state,
             "",

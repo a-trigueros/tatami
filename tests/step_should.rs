@@ -32,6 +32,7 @@ fn commit_describes_the_working_copy_and_advances() {
         &Hooks::none(),
         &mut NoGate,
         &repo.path(),
+        None,
         &mut Vec::new(),
     )
     .expect("step commit");
@@ -58,6 +59,7 @@ fn a_failing_pre_commit_hook_aborts_the_commit() {
         &hooks,
         &mut NoGate,
         &repo.path(),
+        None,
         &mut Vec::new(),
     )
     .unwrap_err();

@@ -21,7 +21,7 @@
 //! shortcut: the full minijinja variable/filter set lands in M4.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use thiserror::Error;
@@ -45,6 +45,24 @@ pub enum HookPhase {
 }
 
 impl HookPhase {
+    /// Parses a kebab-case config key back to a phase (for
+    /// `tt config approvals add`).
+    pub fn parse(config_key: &str) -> Option<Self> {
+        Some(match config_key {
+            "pre-switch" => Self::PreSwitch,
+            "post-switch" => Self::PostSwitch,
+            "pre-start" => Self::PreStart,
+            "post-start" => Self::PostStart,
+            "pre-remove" => Self::PreRemove,
+            "post-remove" => Self::PostRemove,
+            "pre-merge" => Self::PreMerge,
+            "post-merge" => Self::PostMerge,
+            "pre-commit" => Self::PreCommit,
+            "post-commit" => Self::PostCommit,
+            _ => return None,
+        })
+    }
+
     /// The kebab-case config key, for error messages.
     pub fn config_key(self) -> &'static str {
         match self {
@@ -119,12 +137,38 @@ enum Origin {
     Project,
 }
 
+/// The hook sources plus where their detached output goes — the two travel
+/// together through the command flows.
+#[derive(Debug, Clone, Copy)]
+pub struct HookParts<'a> {
+    pub hooks: &'a Hooks<'a>,
+    pub logs_dir: Option<&'a Path>,
+}
+
+impl<'a> HookParts<'a> {
+    pub fn none() -> Self {
+        Self {
+            hooks: &NO_HOOKS,
+            logs_dir: None,
+        }
+    }
+}
+
+/// Static no-hook parts backing [`HookParts::none`].
+static NO_HOOKS: Hooks<'static> = Hooks {
+    user: None,
+    project: None,
+};
+
 /// Everything a hook template can render and run against.
 pub struct HookContext<'a> {
     pub phase: HookPhase,
     pub workspace: &'a str,
     pub workspace_path: &'a Path,
     pub hooks: &'a Hooks<'a>,
+    /// Where detached (`post-*`) output is logged; `None` keeps the output on
+    /// the caller's terminal.
+    pub logs_dir: Option<&'a Path>,
 }
 
 impl HookContext<'_> {
@@ -158,6 +202,13 @@ pub enum HookError {
     Denied {
         phase: &'static str,
         command: String,
+    },
+    #[error("cannot open hook log file {path}: {source}")]
+    Log {
+        phase: &'static str,
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
     },
 }
 
@@ -261,18 +312,39 @@ fn execute_detached(
     ctx: &HookContext<'_>,
     cwd: &Path,
 ) -> Result<(), HookError> {
-    for (_name, command) in entries(spec) {
+    let pid = std::process::id();
+    for (index, (_name, command)) in entries(spec).into_iter().enumerate() {
         let rendered = ctx.render(&command);
-        Command::new("sh")
-            .arg("-c")
-            .arg(&rendered)
-            .current_dir(cwd)
-            .spawn()
-            .map_err(|source| HookError::Spawn {
-                phase: ctx.phase.config_key(),
-                command: rendered,
-                source,
-            })?;
+        let mut process = Command::new("sh");
+        process.arg("-c").arg(&rendered).current_dir(cwd);
+        if let Some(logs_dir) = ctx.logs_dir {
+            // Detached output is routed to a per-hook log file instead of the
+            // caller's terminal — no failure detection, the file is the trace.
+            let log_path = logs_dir.join(format!("{}-{pid}-{index}.log", ctx.phase.config_key()));
+            let _ = std::fs::create_dir_all(logs_dir);
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+            {
+                Ok(log) => {
+                    process.stdout(log.try_clone().expect("log fd clone"));
+                    process.stderr(log);
+                }
+                Err(source) => {
+                    return Err(HookError::Log {
+                        phase: ctx.phase.config_key(),
+                        path: log_path,
+                        source,
+                    });
+                }
+            }
+        }
+        process.spawn().map_err(|source| HookError::Spawn {
+            phase: ctx.phase.config_key(),
+            command: rendered,
+            source,
+        })?;
     }
     Ok(())
 }
@@ -324,6 +396,7 @@ mod hook_should {
             workspace,
             workspace_path,
             hooks,
+            logs_dir: None,
         }
     }
 
@@ -516,5 +589,71 @@ mod hook_should {
         run_detached(&ctx, &mut Vec::new(), &mut gate);
 
         assert_eq!(std::fs::read_dir(cwd).unwrap().count(), 0);
+    }
+}
+
+#[cfg(test)]
+mod detached_logs_should {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn routes_detached_output_to_the_log_directory() {
+        let cwd = tempfile::tempdir().unwrap();
+        let logs = tempfile::tempdir().unwrap();
+        let user = toml::from_str::<UserConfig>("post-start = \"echo logged-line\"").unwrap();
+        let hooks = Hooks {
+            user: Some(&user),
+            project: None,
+        };
+        let ctx = HookContext {
+            phase: HookPhase::PostStart,
+            workspace: "ws",
+            workspace_path: cwd.path(),
+            hooks: &hooks,
+            logs_dir: Some(logs.path()),
+        };
+
+        run_detached(&ctx, &mut Vec::new(), &mut NoGate);
+
+        // The detached child runs concurrently; poll briefly for its trace.
+        let mut found = None;
+        for _ in 0..50 {
+            let mut entries: Vec<PathBuf> = std::fs::read_dir(logs.path())
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .collect();
+            if let Some(log) = entries.pop() {
+                let content = std::fs::read_to_string(log.clone()).unwrap_or_default();
+                if content.contains("logged-line") {
+                    found = Some(log);
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(found.is_some(), "no log file captured the hook output");
+    }
+
+    #[test]
+    fn keeps_output_on_the_terminal_when_no_log_directory_is_configured() {
+        let cwd = tempfile::tempdir().unwrap();
+        let user = toml::from_str::<UserConfig>("post-start = \"echo hi\"").unwrap();
+        let hooks = Hooks {
+            user: Some(&user),
+            project: None,
+        };
+        let ctx = HookContext {
+            phase: HookPhase::PostStart,
+            workspace: "ws",
+            workspace_path: cwd.path(),
+            hooks: &hooks,
+            logs_dir: None,
+        };
+
+        // No log dir: spawn succeeds and writes nothing anywhere else.
+        run_detached(&ctx, &mut Vec::new(), &mut NoGate);
     }
 }

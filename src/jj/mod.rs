@@ -78,7 +78,7 @@ pub trait Jj {
 }
 
 /// Working-copy commit status of a workspace, as jj sees it.
-#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct WcStatus {
     /// Short change id, for display.
     pub change: String,
@@ -93,7 +93,7 @@ pub struct WcStatus {
 }
 
 /// A workspace tracked by the repository.
-#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct WorkspaceInfo {
     pub name: String,
     /// Root directory as recorded by jj — canonical, symlinks resolved.
@@ -318,4 +318,9 @@ pub enum JjError {
     },
     #[error("bookmark `{name}` has no target commit")]
     BookmarkTargetMissing { name: String },
+    #[error("cannot write output: {source}")]
+    OutputWrite {
+        #[source]
+        source: std::io::Error,
+    },
 }

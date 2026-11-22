@@ -22,6 +22,7 @@ fn args<'a>(root: &'a Path, name: Option<&'a str>, create: bool) -> SwitchArgs<'
         hooks: &NO_HOOKS,
         current_root: root,
         home: Path::new("/home/u"),
+        logs_dir: None,
     }
 }
 

@@ -1,5 +1,7 @@
 use clap::Parser;
-use tatami::cli::{Cli, Command, ConfigCommand, ShellCommand, StepCommand};
+use tatami::cli::{
+    ApprovalsCommand, Cli, Command, ConfigCommand, ShellCommand, StateCommand, StepCommand,
+};
 use tatami::{approvals, cmd, config, hook, jj, paths, state};
 
 fn main() {
@@ -9,15 +11,16 @@ fn main() {
         Command::Hello { name } => {
             println!("Hello, {name}!");
         }
-        Command::List => {
+        Command::List { format } => {
             let dir = std::env::current_dir().unwrap_or_else(|error| {
                 eprintln!("tatami: cannot determine the current directory: {error}");
                 std::process::exit(1);
             });
-            cmd::list::run(&jj::CliJj::at(dir)).unwrap_or_else(|error| {
-                eprintln!("tatami: {error}");
-                std::process::exit(1);
-            });
+            cmd::list::run(&jj::CliJj::at(dir), format.into(), &mut std::io::stdout())
+                .unwrap_or_else(|error| {
+                    eprintln!("tatami: {error}");
+                    std::process::exit(1);
+                });
         }
         Command::Switch { name, create } => {
             let dir = std::env::current_dir().unwrap_or_else(|error| {
@@ -57,12 +60,17 @@ fn main() {
                 eprintln!("tatami: {error}");
                 std::process::exit(1);
             });
+            let state_dir = state::state_dir(&dir).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
             let args = cmd::switch::SwitchArgs {
                 name: name.as_deref(),
                 create,
                 hooks: &hooks,
                 current_root: &dir,
                 home: paths_env.home(),
+                logs_dir: Some(&state_dir.join("logs")),
             };
             let destination = cmd::switch::run(
                 &adapter,
@@ -195,12 +203,17 @@ fn main() {
                 user: Some(&user_config.config),
                 project: Some(&project_config.config),
             };
+            let state_dir = state::state_dir(&dir).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
             let outcome = cmd::merge::run(
                 &jj::CliJj::at(dir.clone()),
                 target.as_deref(),
                 &hooks,
                 &mut gate,
                 &dir,
+                Some(&state_dir.join("logs")),
                 &mut std::io::stderr(),
             )
             .unwrap_or_else(|error| {
@@ -254,12 +267,17 @@ fn main() {
             let adapter = jj::CliJj::at(dir.clone());
             match command {
                 StepCommand::Commit { message } => {
+                    let state_dir = state::state_dir(&dir).unwrap_or_else(|error| {
+                        eprintln!("tatami: {error}");
+                        std::process::exit(1);
+                    });
                     cmd::step::commit(
                         &adapter,
                         &message,
                         &hooks,
                         &mut gate,
                         &dir,
+                        Some(&state_dir.join("logs")),
                         &mut std::io::stderr(),
                     )
                     .unwrap_or_else(|error| {
@@ -369,6 +387,106 @@ fn main() {
                             eprintln!("tatami: {error}");
                             std::process::exit(1);
                         })
+                    );
+                }
+            },
+            ConfigCommand::State { command } => match command {
+                StateCommand::Show => {
+                    let dir = std::env::current_dir().unwrap_or_else(|error| {
+                        eprintln!("tatami: cannot determine the current directory: {error}");
+                        std::process::exit(1);
+                    });
+                    let state_dir = state::state_dir(&dir).unwrap_or_else(|error| {
+                        eprintln!("tatami: {error}");
+                        std::process::exit(1);
+                    });
+                    println!("state dir: {}", state_dir.display());
+                    let trash = state::trash_entries(&state_dir).unwrap_or_else(|error| {
+                        eprintln!("tatami: {error}");
+                        std::process::exit(1);
+                    });
+                    if trash.is_empty() {
+                        println!("trash: empty");
+                    }
+                    for entry in trash {
+                        println!("trash: {}", entry.display());
+                    }
+                }
+                StateCommand::Clear { force } => {
+                    let dir = std::env::current_dir().unwrap_or_else(|error| {
+                        eprintln!("tatami: cannot determine the current directory: {error}");
+                        std::process::exit(1);
+                    });
+                    let state_dir = state::state_dir(&dir).unwrap_or_else(|error| {
+                        eprintln!("tatami: {error}");
+                        std::process::exit(1);
+                    });
+                    let trash = state::trash_entries(&state_dir).unwrap_or_else(|error| {
+                        eprintln!("tatami: {error}");
+                        std::process::exit(1);
+                    });
+                    for entry in &trash {
+                        println!("would remove: {}", entry.display());
+                    }
+                    if trash.is_empty() {
+                        println!("trash: empty");
+                    }
+                    if !force {
+                        if !trash.is_empty() {
+                            println!("run with --force to actually delete");
+                        }
+                        return;
+                    }
+                    state::clear_trash(&state_dir).unwrap_or_else(|error| {
+                        eprintln!("tatami: {error}");
+                        std::process::exit(1);
+                    });
+                    println!("trash emptied");
+                }
+            },
+            ConfigCommand::Approvals { command } => match command {
+                ApprovalsCommand::Add {
+                    phase,
+                    command: hook_command,
+                } => {
+                    let phase = hook::HookPhase::parse(&phase).unwrap_or_else(|| {
+                        eprintln!("tatami: unknown phase `{phase}`");
+                        std::process::exit(1);
+                    });
+                    let joined = hook_command.join(" ");
+                    if joined.trim().is_empty() {
+                        eprintln!("tatami: a hook command is required");
+                        std::process::exit(1);
+                    }
+                    let dir = std::env::current_dir().unwrap_or_else(|error| {
+                        eprintln!("tatami: cannot determine the current directory: {error}");
+                        std::process::exit(1);
+                    });
+                    let paths_env = paths::ConfigEnv::from_env().unwrap_or_else(|error| {
+                        eprintln!("tatami: {error}");
+                        std::process::exit(1);
+                    });
+                    let project_id = state::host_root(&dir)
+                        .unwrap_or_else(|error| {
+                            eprintln!("tatami: {error}");
+                            std::process::exit(1);
+                        })
+                        .display()
+                        .to_string();
+                    let mut approvals =
+                        approvals::Approvals::load(&paths_env).unwrap_or_else(|error| {
+                            eprintln!("tatami: {error}");
+                            std::process::exit(1);
+                        });
+                    approvals
+                        .approve(&project_id, phase.config_key(), &joined)
+                        .unwrap_or_else(|error| {
+                            eprintln!("tatami: {error}");
+                            std::process::exit(1);
+                        });
+                    println!(
+                        "approved `{joined}` for {} in {project_id}",
+                        phase.config_key()
                     );
                 }
             },

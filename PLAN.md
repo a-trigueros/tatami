@@ -336,12 +336,25 @@ Notes épinglées (jj 0.47.1 + shells) :
 
 ### M3 — merge + rebase + step ✅ (2026-11-22)
 
+### M4 — finition (en cours, 2026-11-22)
+
+- [x] `tt list --format json` (table sérialisée, writer injectable)
+- [x] `tt config state show` / `clear --force` (purge du trash gardée par
+      `--force` : les fichiers ignorés du trash peuvent être uniques)
+- [x] `tt config approvals add <phase> <command…>` (pré-approbation CI,
+      clé projet = racine hôte canonique du cwd)
+- [x] Sortie des hooks détachés routée vers `<state>/logs/<phase>-<pid>-<n>.log`
+      (plus de bruit sur le terminal ; le fichier est la trace — pas de
+      détection d'échec, inchangé) ; `HookParts` bundle sources+logs
+      (crée pour rester sous la limite clippy d'arité)
+- [ ] Aliases (`[aliases]`) + moteur minijinja complet (variables/filtres
+      hooks + `workspace-path`)
+- [ ] `copy-ignored` (après sourcing worktrunk)
+- [ ] `tt merge --remove` (réviser)
+
 ### Prochaine étape
 
-1. **M4 — finition** : aliases, minijinja complet (variables/filtres hooks +
-   `workspace-path`), `--format json`, `tt config state` (+ purge du trash),
-   logs des hooks détachés, `tt config approvals add`, complétions étendues,
-   `copy-ignored` (après sourcing worktrunk)
+1. **M4 suite** : aliases + minijinja, `copy-ignored` (sourcing), complétions
 
 ### Contrats jj épinglés pour `tt list` (jj 0.47.1, docs templates v0.47.1)
 

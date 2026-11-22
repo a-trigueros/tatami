@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::hook::{self, ApprovalGate, HookContext, HookError, HookPhase, Hooks};
+use crate::hook::{self, ApprovalGate, HookContext, HookError, HookParts, HookPhase};
 use crate::jj::{Jj, JjError};
 
 pub fn run(
@@ -29,7 +29,7 @@ pub fn run(
     template: Option<&str>,
     current_root: &Path,
     home: &Path,
-    hooks: &Hooks<'_>,
+    parts: HookParts<'_>,
     gate: &mut dyn ApprovalGate,
 ) -> Result<PathBuf, CreateError> {
     validate_name(name)?;
@@ -50,7 +50,8 @@ pub fn run(
             phase,
             workspace: name,
             workspace_path: &destination,
-            hooks,
+            hooks: parts.hooks,
+            logs_dir: parts.logs_dir,
         })
     };
     if let Some(ctx) = hook_ctx(HookPhase::PreStart)

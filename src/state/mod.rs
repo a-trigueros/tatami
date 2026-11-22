@@ -132,6 +132,39 @@ pub fn hosts_storage(workspace_root: &Path) -> bool {
     workspace_root.join(".jj").join("repo").is_dir()
 }
 
+/// Where removed workspace directories wait for disposal.
+pub fn trash_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join("trash")
+}
+
+/// Contents of the trash, oldest first. An absent trash directory is normal.
+pub fn trash_entries(state_dir: &Path) -> Result<Vec<PathBuf>, StateError> {
+    let dir = trash_dir(state_dir);
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut entries: Vec<PathBuf> = fs::read_dir(&dir)
+        .map_err(|source| StateError::ReadFile {
+            path: dir.clone(),
+            source,
+        })?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .collect();
+    entries.sort();
+    Ok(entries)
+}
+
+/// Empties the trash — destructive: trashed directories hold files that may
+/// exist nowhere else (ignored files like `.env`). Callers must guard.
+pub fn clear_trash(state_dir: &Path) -> Result<(), StateError> {
+    let dir = trash_dir(state_dir);
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    fs::remove_dir_all(&dir).map_err(|source| StateError::WriteDir { path: dir, source })
+}
+
 #[derive(Debug, Error)]
 pub enum StateError {
     /// Not a workspace at all (no `.jj/repo`, neither directory nor pointer).
@@ -330,5 +363,46 @@ mod file_state_should {
         fs::write(root.path().join(".jj/tatami/previous_workspace"), "  \n").unwrap();
 
         assert_eq!(state.previous_workspace().unwrap(), None);
+    }
+}
+
+#[cfg(test)]
+mod trash_should {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    fn mkdir_all(path: &Path) {
+        fs::create_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn lists_trash_entries_sorted_and_tolerates_an_absent_directory() {
+        let state = tempfile::tempdir().unwrap();
+        assert_eq!(trash_entries(state.path()).unwrap(), Vec::<PathBuf>::new());
+
+        let trash = state.path().join("trash");
+        mkdir_all(&trash.join("b"));
+        fs::write(trash.join("b/.env"), "SECRET=1").unwrap();
+        mkdir_all(&trash.join("a"));
+
+        let entries = trash_entries(state.path()).unwrap();
+        assert_eq!(
+            entries,
+            vec![trash.join("a"), trash.join("b")],
+            "oldest name first"
+        );
+    }
+
+    #[test]
+    fn clear_trash_removes_every_entry_and_tolerates_an_absent_directory() {
+        let state = tempfile::tempdir().unwrap();
+        clear_trash(state.path()).unwrap();
+
+        mkdir_all(&state.path().join("trash/ws1"));
+        fs::write(state.path().join("trash/ws1/.env"), "SECRET=1").unwrap();
+
+        clear_trash(state.path()).unwrap();
+
+        assert_eq!(trash_entries(state.path()).unwrap(), Vec::<PathBuf>::new());
     }
 }

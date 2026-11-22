@@ -45,6 +45,7 @@ fn fast_forwards_when_the_workspace_is_descendant() {
         &Hooks::none(),
         &mut NoGate,
         &ws1_root,
+        None,
         &mut Vec::new(),
     )
     .expect("merge ws1");
@@ -78,6 +79,7 @@ fn rebases_diverged_commits_then_moves_the_target() {
         &Hooks::none(),
         &mut NoGate,
         &ws1_root,
+        None,
         &mut Vec::new(),
     )
     .expect("merge diverged ws1");
@@ -136,6 +138,7 @@ fn requires_the_namesake_bookmark() {
         &Hooks::none(),
         &mut NoGate,
         &loose_root,
+        None,
         &mut Vec::new(),
     )
     .unwrap_err();
@@ -162,6 +165,7 @@ fn reports_nothing_to_merge_when_fully_integrated() {
         &Hooks::none(),
         &mut NoGate,
         &ws1_root,
+        None,
         &mut Vec::new(),
     )
     .unwrap_err();
@@ -186,6 +190,7 @@ fn falls_back_to_master_when_main_is_absent() {
         &Hooks::none(),
         &mut NoGate,
         &ws1_root,
+        None,
         &mut Vec::new(),
     )
     .expect("merge onto master");
@@ -208,6 +213,7 @@ fn an_explicit_target_wins_over_the_detection() {
         &Hooks::none(),
         &mut NoGate,
         &ws1_root,
+        None,
         &mut Vec::new(),
     )
     .expect("merge onto release");
@@ -229,7 +235,16 @@ fn a_failing_pre_merge_hook_aborts_before_any_change() {
     };
 
     let jj = CliJj::at(ws1_root.clone());
-    let error = merge::run(&jj, None, &hooks, &mut NoGate, &ws1_root, &mut Vec::new()).unwrap_err();
+    let error = merge::run(
+        &jj,
+        None,
+        &hooks,
+        &mut NoGate,
+        &ws1_root,
+        None,
+        &mut Vec::new(),
+    )
+    .unwrap_err();
 
     assert!(matches!(error, merge::MergeError::Hook(_)), "{error:?}");
     let at_main = repo.capture_jj(&["log", "-r", "main", "--no-graph", "-T", "description"]);

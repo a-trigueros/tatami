@@ -1,7 +1,23 @@
 //! CLI definition (clap). Lives in the library so the shell-completion
 //! generator and the binary share one source of truth.
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+/// Output formats for commands that support `--format`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ListFormat {
+    Text,
+    Json,
+}
+
+impl From<ListFormat> for crate::cmd::list::Format {
+    fn from(value: ListFormat) -> Self {
+        match value {
+            ListFormat::Text => Self::Text,
+            ListFormat::Json => Self::Json,
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "tatami", version, about = "Tatami CLI")]
@@ -22,7 +38,11 @@ pub enum Command {
         name: String,
     },
     /// List all workspaces with their working-copy status
-    List,
+    List {
+        /// Output format
+        #[arg(long, value_enum, default_value = "text")]
+        format: ListFormat,
+    },
     /// Resolve the workspace to switch to (the shell wrapper performs the cd)
     Switch {
         /// Workspace name, or `-` for the previous one; omitted for the picker
@@ -72,6 +92,42 @@ pub enum ConfigCommand {
     Shell {
         #[command(subcommand)]
         command: ShellCommand,
+    },
+    /// Inspect or purge tatami's internal state (trash, logs)
+    State {
+        #[command(subcommand)]
+        command: StateCommand,
+    },
+    /// Record a project-hook approval ahead of time (CI, unattended runs)
+    Approvals {
+        #[command(subcommand)]
+        command: ApprovalsCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum StateCommand {
+    /// Print the state directory and its trash contents
+    Show,
+    /// Empty the trash — destructive: trashed directories may hold ignored
+    /// files that exist nowhere else
+    Clear {
+        /// Actually delete (without it, only lists what would go)
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ApprovalsCommand {
+    /// Approve a project hook command for the current project
+    Add {
+        /// Lifecycle phase (pre-switch, post-switch, pre-start, post-start,
+        /// pre-remove, post-remove, pre-merge, post-merge, pre-commit,
+        /// post-commit)
+        phase: String,
+        /// The hook command, exactly as written in the project config
+        command: Vec<String>,
     },
 }
 
