@@ -40,7 +40,7 @@ fn main() {
             let args = cmd::switch::SwitchArgs {
                 name: name.as_deref(),
                 create,
-                workspace_template: user_config.config.workspace_path(),
+                config: Some(&user_config.config),
                 current_root: &dir,
                 home: paths_env.home(),
             };
@@ -65,18 +65,29 @@ fn main() {
                 eprintln!("tatami: cannot determine the current directory: {error}");
                 std::process::exit(1);
             });
+            let paths_env = paths::ConfigEnv::from_env().unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let user_config = config::load_user_config(&paths_env).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
             let state_dir = state::state_dir(&dir).unwrap_or_else(|error| {
                 eprintln!("tatami: {error}");
                 std::process::exit(1);
             });
             let report = cmd::remove::run(
-                &jj::CliJj::at(dir),
+                &jj::CliJj::at(dir.clone()),
                 cmd::remove::RemoveArgs {
                     name: &name,
                     delete_bookmark,
                     now_millis: now_millis(),
                     state_dir: &state_dir,
+                    config: Some(&user_config.config),
+                    caller_root: &dir,
                 },
+                &mut std::io::stderr().lock(),
             )
             .unwrap_or_else(|error| {
                 eprintln!("tatami: {error}");

@@ -9,6 +9,19 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+/// A hook or alias value, in one of worktrunk's three shapes (PLAN §4):
+/// one command string, named concurrent commands, or an ordered pipeline of
+/// steps (concurrent within a step; a failed step stops the pipeline).
+/// TOML cannot mix the table and array-of-tables shapes for one key, so a
+/// given hook always has exactly one shape.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum CommandSpec {
+    Single(String),
+    Concurrent(BTreeMap<String, String>),
+    Pipeline(Vec<BTreeMap<String, String>>),
+}
+
 /// The user config file's content.
 #[derive(Debug, Default, Clone, PartialEq, Deserialize)]
 #[serde(default)]
@@ -19,11 +32,23 @@ pub struct UserConfig {
     /// Legacy worktrunk key, honored when `workspace-path` is absent.
     #[serde(rename = "worktree-path")]
     worktree_path: Option<String>,
-    /// Sections tatami does not execute yet (hooks, aliases, switch, merge,
-    /// remove, commit, step, list, projects). Kept for lossless round-trip
-    /// introspection.
+    #[serde(rename = "pre-switch")]
+    pre_switch: Option<CommandSpec>,
+    #[serde(rename = "post-switch")]
+    post_switch: Option<CommandSpec>,
+    #[serde(rename = "pre-start")]
+    pre_start: Option<CommandSpec>,
+    #[serde(rename = "post-start")]
+    post_start: Option<CommandSpec>,
+    #[serde(rename = "pre-remove")]
+    pre_remove: Option<CommandSpec>,
+    #[serde(rename = "post-remove")]
+    post_remove: Option<CommandSpec>,
+    /// Sections tatami does not execute yet (aliases, switch, merge, remove,
+    /// commit, step, list, projects, and hooks for commands tatami does not
+    /// have yet like pre-commit). Kept for lossless round-trip introspection.
     /// shortcut: raw passthrough; each section gets a typed model in the
-    /// milestone that first consumes it (M2 hooks, M4 aliases).
+    /// milestone that first consumes it (M4 aliases).
     #[serde(flatten)]
     unparsed: BTreeMap<String, toml::Value>,
 }
@@ -36,6 +61,18 @@ impl UserConfig {
         self.workspace_path
             .as_deref()
             .or(self.worktree_path.as_deref())
+    }
+
+    /// The hook configured for a lifecycle phase, if any.
+    pub fn hook(&self, phase: crate::hook::HookPhase) -> Option<&CommandSpec> {
+        match phase {
+            crate::hook::HookPhase::PreSwitch => self.pre_switch.as_ref(),
+            crate::hook::HookPhase::PostSwitch => self.post_switch.as_ref(),
+            crate::hook::HookPhase::PreStart => self.pre_start.as_ref(),
+            crate::hook::HookPhase::PostStart => self.post_start.as_ref(),
+            crate::hook::HookPhase::PreRemove => self.pre_remove.as_ref(),
+            crate::hook::HookPhase::PostRemove => self.post_remove.as_ref(),
+        }
     }
 }
 
@@ -102,6 +139,56 @@ mod workspace_path_should {
         assert_str_eq!(
             config.workspace_path().unwrap(),
             ".worktrees/{{ branch | sanitize }}"
+        );
+    }
+
+    #[test]
+    fn parses_hook_shapes_for_the_phases_tatami_executes() {
+        let config = parse(
+            r#"
+            pre-start = "npm install"
+
+            [post-start]
+            server = "npm run dev"
+
+            [[pre-remove]]
+            archive = "tar czf backup.tgz ."
+
+            [[pre-remove]]
+            report = "echo done"
+            "#,
+        );
+
+        assert_eq!(
+            config.hook(crate::hook::HookPhase::PreStart),
+            Some(&CommandSpec::Single("npm install".to_string()))
+        );
+        assert_eq!(
+            config.hook(crate::hook::HookPhase::PostStart),
+            Some(&CommandSpec::Concurrent(BTreeMap::from([(
+                "server".to_string(),
+                "npm run dev".to_string()
+            )])))
+        );
+        assert_eq!(
+            config.hook(crate::hook::HookPhase::PreRemove),
+            Some(&CommandSpec::Pipeline(vec![
+                BTreeMap::from([("archive".to_string(), "tar czf backup.tgz .".to_string())]),
+                BTreeMap::from([("report".to_string(), "echo done".to_string())]),
+            ]))
+        );
+    }
+
+    #[test]
+    fn hooks_for_unimplemented_commands_stay_unparsed() {
+        let config = parse("pre-commit = \"cargo fmt\"");
+
+        assert_eq!(config.hook(crate::hook::HookPhase::PreStart), None);
+        // Still available raw, for introspection:
+        assert!(
+            config.unparsed.contains_key("pre-commit"),
+            "unparsed keys: {:?}",
+            config.unparsed.keys().collect::<Vec<_>>()
         );
     }
 }

@@ -18,6 +18,8 @@ fn remove_args<'a>(name: &'a str, delete_bookmark: bool, state_dir: &'a Path) ->
             .unwrap()
             .as_millis() as u64,
         state_dir,
+        config: None,
+        caller_root: state_dir,
     }
 }
 
@@ -35,6 +37,7 @@ fn forgets_the_workspace_and_trashes_its_directory() {
     let report = remove::run(
         &jj,
         remove_args("ws2", false, &state_dir.path().join(".jj/tatami")),
+        &mut Vec::new(),
     )
     .expect("remove ws2");
 
@@ -68,6 +71,7 @@ fn refuses_the_current_workspace_and_the_host() {
     let error = remove::run(
         &jj,
         remove_args("default", false, &state_dir.path().join(".jj/tatami")),
+        &mut Vec::new(),
     )
     .unwrap_err();
 
@@ -88,6 +92,7 @@ fn deletes_an_existing_namesake_bookmark_when_asked() {
     let report = remove::run(
         &jj,
         remove_args("ws2", true, &state_dir.path().join(".jj/tatami")),
+        &mut Vec::new(),
     )
     .expect("remove ws2 with bookmark");
 

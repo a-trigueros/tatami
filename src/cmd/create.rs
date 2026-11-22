@@ -20,6 +20,8 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
+use crate::config::schema::UserConfig;
+use crate::hook::{self, HookContext, HookError, HookPhase};
 use crate::jj::{Jj, JjError};
 
 pub fn run(
@@ -28,6 +30,7 @@ pub fn run(
     template: Option<&str>,
     current_root: &Path,
     home: &Path,
+    config: Option<&UserConfig>,
 ) -> Result<PathBuf, CreateError> {
     validate_name(name)?;
     let destination = resolve_destination(template, name, current_root, home)?;
@@ -38,6 +41,32 @@ pub fn run(
     }
     jj.workspace_add(name, &destination)?;
     jj.bookmark_create(name, name)?;
+
+    // Worktrunk-sourced order: creation → pre-start (blocking) → post-start
+    // (detached). A failed pre-start rolls the fresh creation back — a
+    // half-created workspace must not survive.
+    let hook_ctx = |phase| {
+        config.map(|config| HookContext {
+            phase,
+            workspace: name,
+            workspace_path: &destination,
+            config,
+        })
+    };
+    if let Some(ctx) = hook_ctx(HookPhase::PreStart)
+        && let Err(error) = hook::run_blocking(&ctx)
+    {
+        let _ = jj.workspace_forget(name);
+        if destination.exists() {
+            let _ = fs::remove_dir_all(&destination);
+        }
+        return Err(error.into());
+    }
+    if let Some(ctx) = hook_ctx(HookPhase::PostStart) {
+        // No writer here: detached-hook warnings surface on the caller's
+        // stderr in the switch flow; standalone creation stays quiet.
+        hook::run_detached_quiet(&ctx);
+    }
     Ok(destination)
 }
 
@@ -130,6 +159,8 @@ pub enum CreateError {
         #[source]
         source: std::io::Error,
     },
+    #[error(transparent)]
+    Hook(#[from] HookError),
     #[error(transparent)]
     Jj(#[from] JjError),
 }

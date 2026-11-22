@@ -3,9 +3,18 @@
 mod common;
 
 use common::TempRepo;
+use std::fs;
 use std::path::Path;
 use tatami::cmd::create;
+use tatami::config::schema::UserConfig;
 use tatami::jj::{CliJj, Jj};
+
+fn write_user_config(home: &Path, content: &str) -> UserConfig {
+    let dir = home.join(".config/tatami");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("config.toml"), content).unwrap();
+    toml::from_str(content).unwrap()
+}
 
 #[test]
 fn creates_a_workspace_and_its_namesake_bookmark() {
@@ -13,8 +22,15 @@ fn creates_a_workspace_and_its_namesake_bookmark() {
     repo.describe_working_copy("main workspace");
 
     let jj = CliJj::at(repo.path().clone());
-    let dest = create::run(&jj, "feature", None, &repo.path(), Path::new("/home/u"))
-        .expect("create feature");
+    let dest = create::run(
+        &jj,
+        "feature",
+        None,
+        &repo.path(),
+        Path::new("/home/u"),
+        None,
+    )
+    .expect("create feature");
 
     // Worktrunk-parity default: a sibling of the repo dir named
     // `<repo>.<workspace>` (here the repo dir is literally `repo`).
@@ -26,7 +42,15 @@ fn the_created_workspace_is_listed_with_a_bookmark() {
     let repo = TempRepo::init();
 
     let jj = CliJj::at(repo.path().clone());
-    let dest = create::run(&jj, "feature", None, &repo.path(), Path::new("/home/u")).unwrap();
+    let dest = create::run(
+        &jj,
+        "feature",
+        None,
+        &repo.path(),
+        Path::new("/home/u"),
+        None,
+    )
+    .unwrap();
 
     let workspaces = jj.workspaces().unwrap();
     let feature = workspaces
@@ -54,6 +78,7 @@ fn an_in_repo_template_does_not_pollute_the_main_snapshot() {
         Some(".wt/{{ workspace }}"),
         &repo.path(),
         Path::new("/home/u"),
+        None,
     )
     .expect("create with in-repo template");
     assert_eq!(dest, repo.path().join(".wt/inner"));
@@ -65,4 +90,62 @@ fn an_in_repo_template_does_not_pollute_the_main_snapshot() {
         status.contains("no changes"),
         "main working copy polluted: {status:?}"
     );
+}
+
+#[test]
+fn runs_the_start_hooks_in_the_new_workspace() {
+    let repo = TempRepo::init();
+    let home = tempfile::tempdir().unwrap();
+    let config = write_user_config(
+        home.path(),
+        "pre-start = \"echo {{ workspace }} > pre.txt\"\n",
+    );
+
+    let jj = CliJj::at(repo.path().clone());
+    let dest = create::run(
+        &jj,
+        "feature",
+        None,
+        &repo.path(),
+        Path::new("/home/u"),
+        Some(&config),
+    )
+    .expect("create with hooks");
+
+    // pre-start ran inside the fresh workspace (its cwd), after creation.
+    let pre = fs::read_to_string(dest.join("pre.txt")).unwrap();
+    assert_eq!(pre, "feature\n");
+}
+
+#[test]
+fn a_failing_pre_start_rolls_back_the_fresh_workspace() {
+    let repo = TempRepo::init();
+    let home = tempfile::tempdir().unwrap();
+    let config = write_user_config(home.path(), "pre-start = \"exit 1\"\n");
+
+    let jj = CliJj::at(repo.path().clone());
+    let error = create::run(
+        &jj,
+        "feature",
+        None,
+        &repo.path(),
+        Path::new("/home/u"),
+        Some(&config),
+    )
+    .expect_err("pre-start failure must abort");
+
+    assert!(matches!(error, create::CreateError::Hook(_)), "{error:?}");
+
+    // Rollback: forgotten in jj, directory gone.
+    let names: Vec<_> = jj
+        .workspaces()
+        .unwrap()
+        .into_iter()
+        .map(|w| w.name)
+        .collect();
+    assert!(
+        !names.contains(&"feature".to_string()),
+        "workspaces: {names:?}"
+    );
+    assert!(!repo.path().parent().unwrap().join("repo.feature").exists());
 }

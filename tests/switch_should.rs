@@ -11,7 +11,7 @@ fn args<'a>(root: &'a Path, name: Option<&'a str>, create: bool) -> SwitchArgs<'
     SwitchArgs {
         name,
         create,
-        workspace_template: None,
+        config: None,
         current_root: root,
         home: Path::new("/home/u"),
     }

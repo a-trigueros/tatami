@@ -259,10 +259,42 @@ Notes épinglées (jj 0.47.1 + shells) :
       est toujours un commit — le contrôle d'intégration (commits non
       fusionnés) vient avec M3 où la résolution du bookmark principal sera de
       toute façon nécessaire
-- [ ] Hooks pre/post-start + approbations (slice dédiée) : ordre sourcé
-      worktrunk = pre-switch (bloquant) → création → switch → pre-start
-      (bloquant) → post-start (arrière-plan) + post-switch ; `copy-ignored`
-      est typiquement câblé post-start (lui-même en M3)
+- [x] Hooks pre/post-start **exécutés** (slice faite) : formes string/table/
+      pipeline typées (`CommandSpec` untagged, les clés des commandes non
+      encore implémentées comme `pre-commit` restent unparsed) ; ordre sourcé
+      worktrunk = pre-switch (bloquant, source) → création → pre-start
+      (bloquant, nouveau workspace) → post-start (détaché) + post-switch
+      (détaché, destination) ; `pre-remove` bloquant dans le répertoire condamné
+      avant forget, `post-remove` détaché dans le répertoire appelant ;
+      **rollback** de la création si pre-start échoue (forget + rm du répertoire
+      neuf) ; switch sur place = post-switch seul (rien ne bouge)
+      - `shortcut:` pre-* séquentiels (la vraie concurrence n'importe que
+        pour les process longs = post-*), post-* **détachés** (spawn sans
+        wait, pas de détection d'échec, sortie sur le terminal de l'appelant —
+        routage vers `state/logs/` en M4), variables `{{ workspace }}` /
+        `{{ workspace_path }}` seulement (minijinja complet M4), via `sh -c`
+        (unix ; Windows plus tard)
+      - **Hooks v1 = config user uniquement.** Le système d'approbation n'a
+        de sens que pour des hooks partagés via la config projet
+        (`.config/tatami.toml` → fallback `.config/wt.toml`) → slice dédiée
+        ensuite : loader config projet + `[projects."host/owner/repo"]` +
+        `~/.config/tatami/approvals.toml` (fallback worktrunk) + prompt
+        d'approbation + `--yes`
+      - question ouverte à sourcer avant la config projet : le statut exact de
+        la clé `env` dans les tables de hooks worktrunk (variable
+        d'environnement vs commande nommée)
+
+### Prochaine étape
+
+1. **Config projet + approbations** (clôture M2) : `.config/tatami.toml` →
+   fallback `.config/wt.toml`, hooks projet soumis à approbation
+   (`~/.config/tatami/approvals.toml` → fallback worktrunk), per-project
+   overrides `[projects."host/owner/repo"]`, prompt + `--yes`
+2. **M3 — merge + rebase + step** : workflow `tt merge` jj-isé (résolution du
+   bookmark principal, squash/rebase/ff, push), `tt rebase`, `tt step`
+   (commit, squash, rebase, push, diff, for-each, prune, `copy-ignored`)
+3. **M4 — finition** : aliases, minijinja complet, `--format json`,
+   `tt config state` (+ purge du trash), logs des hooks, complétions étendues
 
 ### Contrats jj épinglés pour `tt list` (jj 0.47.1, docs templates v0.47.1)
 

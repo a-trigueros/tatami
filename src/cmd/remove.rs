@@ -14,10 +14,13 @@
 //! boundary (EXDEV), the directory is deleted in place instead.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
+use crate::config::schema::UserConfig;
+use crate::hook::{self, HookContext, HookError, HookPhase};
 use crate::jj::{Jj, JjError, WorkspaceInfo};
 use crate::state;
 
@@ -28,9 +31,18 @@ pub struct RemoveArgs<'a> {
     pub now_millis: u64,
     /// The repo-global tatami state dir, hosting `trash/`.
     pub state_dir: &'a Path,
+    /// The loaded user config (hooks). `None` = no hooks.
+    pub config: Option<&'a UserConfig>,
+    /// The workspace tatami runs in — post-remove's cwd, since the removed
+    /// directory is gone by then.
+    pub caller_root: &'a Path,
 }
 
-pub fn run(jj: &dyn Jj, args: RemoveArgs<'_>) -> Result<RemoveReport, RemoveError> {
+pub fn run(
+    jj: &dyn Jj,
+    args: RemoveArgs<'_>,
+    out: &mut dyn Write,
+) -> Result<RemoveReport, RemoveError> {
     let workspaces = jj.workspaces()?;
     let target = resolve(&workspaces, args.name)?;
     if target.is_current {
@@ -47,6 +59,19 @@ pub fn run(jj: &dyn Jj, args: RemoveArgs<'_>) -> Result<RemoveReport, RemoveErro
         });
     }
 
+    // pre-remove runs in the doomed directory while it still exists.
+    if let Some(config) = args.config
+        && let Some(root) = &target.root
+    {
+        hook::run_blocking(&HookContext {
+            phase: HookPhase::PreRemove,
+            workspace: args.name,
+            workspace_path: root,
+            config,
+        })
+        .map_err(RemoveError::Hook)?;
+    }
+
     jj.workspace_forget(args.name)?;
     let bookmark_deleted = if args.delete_bookmark {
         jj.bookmark_delete(args.name)?
@@ -60,6 +85,18 @@ pub fn run(jj: &dyn Jj, args: RemoveArgs<'_>) -> Result<RemoveReport, RemoveErro
         }
         _ => DirectoryOutcome::AlreadyGone,
     };
+
+    if let Some(config) = args.config {
+        hook::run_detached(
+            &HookContext {
+                phase: HookPhase::PostRemove,
+                workspace: args.name,
+                workspace_path: args.caller_root,
+                config,
+            },
+            out,
+        );
+    }
 
     Ok(RemoveReport {
         name: args.name.to_string(),
@@ -143,6 +180,8 @@ pub enum RemoveError {
         #[source]
         source: std::io::Error,
     },
+    #[error(transparent)]
+    Hook(#[from] HookError),
 }
 
 #[cfg(test)]
@@ -219,6 +258,7 @@ mod remove_should {
         delete_bookmark: bool,
         state_dir: &Path,
     ) -> Result<RemoveReport, RemoveError> {
+        let mut sink = Vec::new();
         run(
             jj,
             RemoveArgs {
@@ -226,7 +266,10 @@ mod remove_should {
                 delete_bookmark,
                 now_millis: 1_000,
                 state_dir,
+                config: None,
+                caller_root: Path::new("/tmp/caller"),
             },
+            &mut sink,
         )
     }
 

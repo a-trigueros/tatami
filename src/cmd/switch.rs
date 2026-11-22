@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::cmd::create::{self, CreateError};
+use crate::config::schema::UserConfig;
+use crate::hook::{self, HookContext, HookError, HookPhase};
 use crate::jj::{Jj, JjError, WorkspaceInfo};
 use crate::state::{StateError, WorkspaceState};
 
@@ -23,9 +25,9 @@ pub struct SwitchArgs<'a> {
     pub name: Option<&'a str>,
     /// `--create <name>`: create the workspace, then switch to it.
     pub create: bool,
-    /// `workspace-path` template from the user config (legacy
-    /// `worktree-path` already folded in by the loader).
-    pub workspace_template: Option<&'a str>,
+    /// The loaded user config: `workspace-path` template and lifecycle
+    /// hooks. `None` = defaults, no hooks.
+    pub config: Option<&'a UserConfig>,
     pub current_root: &'a Path,
     pub home: &'a Path,
 }
@@ -48,9 +50,10 @@ pub fn run(
             create::run(
                 jj,
                 name,
-                args.workspace_template,
+                args.config.and_then(|c| c.workspace_path()),
                 args.current_root,
                 args.home,
+                args.config,
             )?;
             // Re-list: the fresh workspace must exist before we switch to it.
             let fresh = jj.workspaces()?;
@@ -69,11 +72,49 @@ pub fn run(
 
     if target.name == current.name {
         // Switching in place: the previous workspace must stay the one we
-        // could still come back from.
+        // could still come back from, and nothing moves — only post-switch
+        // fires.
+        if let Some(config) = args.config {
+            hook::run_detached(
+                &HookContext {
+                    phase: HookPhase::PostSwitch,
+                    workspace: &current.name,
+                    workspace_path: current.root.as_deref().unwrap_or(args.current_root),
+                    config,
+                },
+                menu_out,
+            );
+        }
         return destination(current);
     }
+
+    // pre-switch guards the actual move (blocking); worktrunk parity: runs
+    // in the source workspace.
+    if let Some(config) = args.config {
+        hook::run_blocking(&HookContext {
+            phase: HookPhase::PreSwitch,
+            workspace: &current.name,
+            workspace_path: args.current_root,
+            config,
+        })
+        .map_err(SwitchError::Hook)?;
+    }
+
     state.set_previous_workspace(Some(&current.name))?;
-    destination(&target)
+    let destination = destination(&target)?;
+
+    if let Some(config) = args.config {
+        hook::run_detached(
+            &HookContext {
+                phase: HookPhase::PostSwitch,
+                workspace: &target.name,
+                workspace_path: target.root.as_deref().unwrap_or(args.current_root),
+                config,
+            },
+            menu_out,
+        );
+    }
+    Ok(destination)
 }
 
 fn resolve<'w>(
@@ -152,6 +193,8 @@ pub enum SwitchError {
     Create(#[from] CreateError),
     #[error("`--create` needs a workspace name")]
     CreateNeedsName,
+    #[error(transparent)]
+    Hook(#[from] HookError),
     #[error("no workspace named `{name}` (available: {available})")]
     UnknownWorkspace { name: String, available: String },
     #[error("no previous workspace recorded — use `tt switch <name>` first")]
@@ -181,6 +224,7 @@ pub enum SwitchError {
 #[cfg(test)]
 mod switch_should {
     use super::*;
+    use crate::config::schema::UserConfig;
     use crate::jj::WcStatus;
     use pretty_assertions::assert_eq;
     use std::cell::RefCell;
@@ -288,7 +332,7 @@ mod switch_should {
             SwitchArgs {
                 name,
                 create: false,
-                workspace_template: None,
+                config: None,
                 current_root: Path::new("/repo/default"),
                 home: Path::new("/home/u"),
             },
@@ -323,7 +367,7 @@ mod switch_should {
             SwitchArgs {
                 name: None,
                 create: true,
-                workspace_template: None,
+                config: None,
                 current_root: Path::new("/repo/default"),
                 home: Path::new("/home/u"),
             },
@@ -332,6 +376,36 @@ mod switch_should {
         );
 
         assert!(matches!(result.unwrap_err(), SwitchError::CreateNeedsName));
+    }
+
+    #[test]
+    fn a_failing_pre_switch_aborts_before_touching_the_state() {
+        let scratch = tempfile::tempdir().unwrap();
+        let config: UserConfig = toml::from_str("pre-switch = \"exit 1\"").unwrap();
+        let state = FakeState::with_previous("ws2");
+
+        let (result, _) = switch_with(
+            &repo(),
+            SwitchArgs {
+                name: Some("ws2"),
+                create: false,
+                config: Some(&config),
+                current_root: scratch.path(),
+                home: Path::new("/home/u"),
+            },
+            &state,
+            "",
+        );
+
+        let error = result.unwrap_err();
+        assert!(
+            matches!(error, SwitchError::Hook(_)),
+            "expected the hook failure, got: {error:?}"
+        );
+        assert!(
+            state.set_calls.borrow().is_empty(),
+            "the previous workspace must not be recorded when pre-switch fails"
+        );
     }
 
     #[test]
