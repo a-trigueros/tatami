@@ -2,9 +2,10 @@
 //! actually `cd` — verified by real zsh and bash processes sourcing the rc
 //! and running the real binary.
 //!
-//! `zsh -i -c` does not source `.zshrc` on macOS (verified), so the test
-//! sources the rc explicitly; what is under test is the block's content, not
-//! the shell's startup rules.
+//! Unix-only: real zsh/bash plus POSIX path handling (`HOME`, `:`-separated
+//! PATH). Windows is covered by the rest of the suite (the `tt` wrapper is
+//! a zsh/bash feature).
+#![cfg(unix)]
 
 mod common;
 

@@ -53,15 +53,24 @@ jobs:
       # direct download; the Linux job proves the jj contracts.
       - run: cargo test --lib
 
-  # Compile-only guarantee for the experimental Windows binary (no Windows
-  # tests yet): catches non-portable code before a release build. Lib+bin
-  # only — test targets require cargo test's CARGO_BIN_EXE_* env at compile
-  # time and are unix-oriented.
-  check-windows:
-    runs-on: ubuntu-latest
+  # Full integration suite on Windows: real jj (msvc build) against the
+  # proofs. Unix-only shell proofs are cfg-gated out; hooks/aliases invoke
+  # `sh -c`, which resolves via Git Bash on the runners.
+  test-windows:
+    runs-on: windows-latest
+    env:
+      JJ_VERSION: v0.47.1
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-      - run: cargo check --locked --target x86_64-pc-windows-msvc
+      - name: Install jj ${{ env.JJ_VERSION }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$env:JJ_VERSION" --repo jj-vcs/jj `
+            --pattern "jj-*-x86_64-pc-windows-msvc.zip" `
+            --output jj.zip --clobber
+          Expand-Archive jj.zip -DestinationPath jj-bin
+          Add-Content $env:GITHUB_PATH "$env:GITHUB_WORKSPACE\jj-bin"
+      - run: jj --version
+      - run: cargo test

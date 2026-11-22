@@ -29,8 +29,9 @@ cargo install --path .
 ```
 
 Un **binaire Windows expérimental** (`x86_64-pc-windows-msvc`) est publié en
-release GitHub : le binaire fonctionne mais il n'y a pas d'intégration shell —
-`tt switch` imprime la destination, le `cd` est manuel.
+release GitHub : le binaire fonctionne (la suite d'intégration tourne sous
+Windows en CI) mais il n'y a pas d'intégration shell — `tt switch` imprime la
+destination, le `cd` est manuel ; hooks et aliases requièrent `sh` (Git Bash).
 
 ## Intégration shell
 

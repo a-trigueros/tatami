@@ -21,8 +21,8 @@ jobs:
             target: aarch64-apple-darwin
           - os: macos-13
             target: x86_64-apple-darwin
-          # EXPERIMENTAL: binary only — no shell integration, no tests on
-          # Windows yet (switch prints the destination; cd is manual).
+          # EXPERIMENTAL: binary only — no shell integration (the tt wrapper
+          # is zsh/bash); integration tests do run on Windows in CI.
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bin: tatami.exe
