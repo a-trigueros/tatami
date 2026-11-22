@@ -87,7 +87,7 @@ fn main() {
         }
         Command::Remove {
             name,
-            delete_bookmark,
+            keep_bookmark,
         } => {
             let dir = std::env::current_dir().unwrap_or_else(|error| {
                 eprintln!("tatami: cannot determine the current directory: {error}");
@@ -129,7 +129,8 @@ fn main() {
                 &jj::CliJj::at(dir.clone()),
                 cmd::remove::RemoveArgs {
                     name: &name,
-                    delete_bookmark,
+                    // Deleted by default (worktrunk parity: delete-branch).
+                    delete_bookmark: !keep_bookmark,
                     now_millis: now_millis(),
                     state_dir: &state_dir,
                     hooks: &hooks,

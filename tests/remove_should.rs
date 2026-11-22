@@ -181,6 +181,12 @@ fn removes_a_workspace_whose_name_contains_a_slash() {
         other => panic!("expected Trashed, got: {other:?}"),
     }
     assert!(!ws_root.exists(), "the workspace dir must be gone");
+    // Default since the flip: the namesake bookmark goes with the workspace.
+    let bookmarks = repo.capture_jj(&["bookmark", "list"]);
+    assert!(
+        !bookmarks.contains("feat/test"),
+        "the namesake bookmark must be deleted by default: {bookmarks:?}"
+    );
 }
 
 #[test]

@@ -51,9 +51,9 @@ pub enum Command {
         /// Workspace to remove (cannot be the current one or the host of the
         /// shared repo storage)
         name: String,
-        /// Also delete the namesake bookmark
-        #[arg(long = "delete-bookmark")]
-        delete_bookmark: bool,
+        /// Keep the namesake bookmark (deleted by default)
+        #[arg(long = "keep-bookmark")]
+        keep_bookmark: bool,
     },
     /// Re-parent the current workspace's commits onto the target bookmark
     Rebase {
@@ -202,6 +202,26 @@ mod cli_should {
                 assert_eq!(name.as_deref(), Some("toto"));
             }
             other => panic!("expected Switch, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn remove_deletes_the_bookmark_by_default_and_keep_bookmark_opts_out() {
+        let cli = Cli::try_parse_from(["tatami", "remove", "ws2"]).expect("parse remove");
+        match cli.command {
+            Command::Remove { keep_bookmark, .. } => {
+                assert!(!keep_bookmark, "the bookmark is deleted by default");
+            }
+            other => panic!("expected Remove, got: {other:?}"),
+        }
+
+        let cli = Cli::try_parse_from(["tatami", "remove", "ws2", "--keep-bookmark"])
+            .expect("parse --keep-bookmark");
+        match cli.command {
+            Command::Remove { keep_bookmark, .. } => {
+                assert!(keep_bookmark, "--keep-bookmark must keep it");
+            }
+            other => panic!("expected Remove, got: {other:?}"),
         }
     }
 }

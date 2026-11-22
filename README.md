@@ -12,7 +12,8 @@ tt switch feature          # cd dans le workspace `feature` (le wrapper fait le 
 tt switch -c login         # -c = --create : crée le workspace + bookmark homonyme, puis cd
 tt list                    # tableau des workspaces (statuts jj)
 tt merge                   # intègre le workspace courant dans main (rebase + ff)
-tt remove login            # oublie + met à la poubelle
+tt remove login            # oublie + met à la poubelle + supprime le bookmark homonyme
+                           # (--keep-bookmark pour le conserver)
 ```
 
 ## Installation

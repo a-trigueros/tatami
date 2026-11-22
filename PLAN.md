@@ -34,7 +34,7 @@ Résolution : `~/.config/tatami/config.toml`, sinon fallback
 | `wt switch` | `tt switch [nom]` | cd vers la racine du workspace ; sans argument = picker ; `-` = précédent ; **`--create <nom>`** crée le workspace + bookmark homonyme puis switch (parité worktrunk : il n'existe pas de `wt create` autonome) ; détection stale inutile (voir §9) |
 | `wt list` | `tt list` | statuts jj : `@` vide/divergent/conflict, retard vs bookmark principal, stale, présence disque ; `--format json` |
 | `wt create` | — | **n'existe pas en amont** : worktrunk crée via `switch --create`. Destination par défaut : `../<repo>.<workspace>` (frère du repo, hors working copy) |
-| `wt remove` | `tt remove <nom>` | garde-fous (commits non intégrés → refuser sans `--force`) ; `jj workspace forget` + rm du répertoire ; `--delete-bookmark` si intégré ; poubelle différée ; **protection spéciale workspace hôte** (§5) |
+| `wt remove` | `tt remove <nom>` | garde-fous (commits non intégrés → refuser sans `--force`) ; `jj workspace forget` + rm du répertoire ; bookmark homonyme supprimé **par défaut** (`--keep-bookmark` pour le conserver) ; poubelle différée ; **protection spéciale workspace hôte** (§5) |
 | `wt merge` | `tt merge [cible]` | décrire/squasher `nom@` → rebaser sur la cible si besoin → avancer le bookmark cible (ff) → `jj git push` éventuel → retirer le workspace |
 | `wt rebase` | `tt rebase` | `jj rebase -d <cible>` des commits du workspace |
 | `wt step …` | `tt step …` | primitives jj : `commit`, `squash`, `rebase`, `push`, `diff`, `for-each`, `prune`, **`copy-ignored`** (ne fait PAS partie de la création — les utilisateurs le câblent en hook post-start), `eval`, `rename` (nouveau). `promote`/`tether` : hors périmètre v1 |
@@ -274,8 +274,10 @@ Notes épinglées (jj 0.47.1 + shells) :
       `jj workspace forget` + répertoire déplacé dans
       `<state_dir>/trash/<nom>-<millis>` (**poubelle** : les fichiers ignorés
       type `.env` n'existent que là ; EXDEV = suppression en place), horloge
-      injectée (`now_millis`), `--delete-bookmark` (jj sort 0 sur un bookmark
-      absent → le booléen de suppression réelle se lit dans le stderr de jj,
+      injectée (`now_millis`), bookmark homonyme supprimé **par défaut**
+      (révisé 2026-11-22 : parité worktrunk `delete-branch` ; `--keep-bookmark`
+      pour conserver) — jj sort 0 sur un bookmark absent → le booléen de
+      suppression réelle se lit dans le stderr de jj,
       flag `shortcut:`) ; pas de `--force` anti-« dirty » : le working copy jj
       est toujours un commit — le contrôle d'intégration (commits non
       fusionnés) vient avec M3 où la résolution du bookmark principal sera de

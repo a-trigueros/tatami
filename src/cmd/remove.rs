@@ -479,6 +479,42 @@ mod remove_should {
     }
 
     #[test]
+    fn a_missing_namesake_bookmark_does_not_fail_the_removal() {
+        // Default flow, workspace without a namesake bookmark: the adapter
+        // reports "not deleted" instead of erroring.
+        let parent = tempfile::tempdir().unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+        let mut jj = FakeJj::with_workspaces(vec![
+            ws("default", true, Some(parent.path().join("main"))),
+            ws("ws2", false, Some(parent.path().join("ws2"))),
+        ]);
+        jj.bookmark_delete_result = false;
+
+        let report = remove_from(&jj, "ws2", true, state_dir.path())
+            .expect("removing without a bookmark must succeed");
+
+        assert!(!report.bookmark_deleted);
+    }
+
+    #[test]
+    fn keeping_the_bookmark_skips_the_deletion_entirely() {
+        let parent = tempfile::tempdir().unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+        let jj = FakeJj::with_workspaces(vec![
+            ws("default", true, Some(parent.path().join("main"))),
+            ws("ws2", false, Some(parent.path().join("ws2"))),
+        ]);
+
+        let report = remove_from(&jj, "ws2", false, state_dir.path()).expect("remove");
+
+        assert!(!report.bookmark_deleted);
+        assert!(
+            jj.bookmark_delete_calls.borrow().is_empty(),
+            "--keep-bookmark must not call bookmark delete"
+        );
+    }
+
+    #[test]
     fn trash_entries_are_sanitized_so_slashed_names_do_not_need_subdirectories() {
         // `feat/test` once trashed to `trash/feat/test-…`: rename(2) failed
         // with ENOENT because `trash/feat/` does not exist.
