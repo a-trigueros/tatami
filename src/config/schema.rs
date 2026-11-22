@@ -49,7 +49,9 @@ pub struct ProjectConfig {
     pre_commit: Option<CommandSpec>,
     #[serde(rename = "post-commit")]
     post_commit: Option<CommandSpec>,
-    /// Sections tatami does not execute yet (aliases, list, forge, step…).
+    /// Shared aliases, gated by approval like project hooks.
+    pub aliases: Option<BTreeMap<String, CommandSpec>>,
+    /// Sections tatami does not execute yet (list, forge, step…).
     #[serde(flatten)]
     unparsed: BTreeMap<String, toml::Value>,
 }
@@ -101,11 +103,11 @@ pub struct UserConfig {
     pre_commit: Option<CommandSpec>,
     #[serde(rename = "post-commit")]
     post_commit: Option<CommandSpec>,
-    /// Sections tatami does not execute yet (aliases, switch, merge, remove,
-    /// commit, step, list, projects, and hooks for commands tatami does not
-    /// have yet like pre-commit). Kept for lossless round-trip introspection.
+    /// Personal aliases — trusted, no approval gate.
+    pub aliases: Option<BTreeMap<String, CommandSpec>>,
+    /// Sections tatami does not execute yet (list, forge, step, projects).
     /// shortcut: raw passthrough; each section gets a typed model in the
-    /// milestone that first consumes it (M4 aliases).
+    /// milestone that first consumes it.
     #[serde(flatten)]
     unparsed: BTreeMap<String, toml::Value>,
 }

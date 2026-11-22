@@ -356,6 +356,58 @@ fn main() {
                 }
             }
         }
+        Command::Unknown(args) => {
+            let dir = std::env::current_dir().unwrap_or_else(|error| {
+                eprintln!("tatami: cannot determine the current directory: {error}");
+                std::process::exit(1);
+            });
+            let paths_env = paths::ConfigEnv::from_env().unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let user_config = config::load_user_config(&paths_env).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let project_config = config::load_project_config(&dir).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let approvals = approvals::Approvals::load(&paths_env).unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+            let project_id = state::host_root(&dir)
+                .unwrap_or_else(|error| {
+                    eprintln!("tatami: {error}");
+                    std::process::exit(1);
+                })
+                .display()
+                .to_string();
+            let mut gate = approvals::InteractiveGate::interactive(approvals, project_id, cli.yes);
+
+            let (name, rest) = args.split_first().unwrap_or_else(|| {
+                eprintln!("tatami: no alias name given");
+                std::process::exit(1);
+            });
+            let raw_args: Vec<String> = rest
+                .iter()
+                .map(|value| value.to_string_lossy().to_string())
+                .collect();
+            cmd::alias::run(
+                &jj::CliJj::at(dir.clone()),
+                &name.to_string_lossy(),
+                &raw_args,
+                &user_config.config,
+                &project_config.config,
+                &mut gate,
+                &dir,
+            )
+            .unwrap_or_else(|error| {
+                eprintln!("tatami: {error}");
+                std::process::exit(1);
+            });
+        }
         Command::Config { command } => match command {
             ConfigCommand::Show => {
                 let env = paths::ConfigEnv::from_env().unwrap_or_else(|error| {

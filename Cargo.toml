@@ -11,6 +11,7 @@ toml = "0.9"
 thiserror = "2"
 home = "0.5"
 clap_complete = "4"
+minijinja = "3.1.0"
 
 [dev-dependencies]
 tempfile = "3"

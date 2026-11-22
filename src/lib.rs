@@ -9,3 +9,4 @@ pub mod hook;
 pub mod jj;
 pub mod paths;
 pub mod state;
+pub mod template;

@@ -9,7 +9,9 @@
 //! - **detached** (`post-*`): commands spawn detached and never block, so a
 //!   `post-start = { server = "npm run dev" }` does not hang the switch.
 //!   Detached processes have no failure detection; their output goes to the
-//!   caller's terminal. shortcut: log-file routing lands with M4 polish.
+//!   per-hook log file when a log directory is provided, otherwise to the
+//!   caller's terminal. shortcut: log-file routing landed in M4, log
+//!   rotation/purge still pending.
 //!
 //! Hooks accumulate: the user's hooks run first, then the project's
 //! (worktrunk-sourced order). Project hooks are gated by an
@@ -17,8 +19,10 @@
 //! project command runs**, keyed on the raw template so a changed command
 //! re-requests approval.
 //!
-//! Template variables today: `{{ workspace }}`, `{{ workspace_path }}`.
-//! shortcut: the full minijinja variable/filter set lands in M4.
+//! Template variables today: `{{ workspace }}`, `{{ workspace_path }}`
+//! (rendered through the minijinja engine, see `crate::template`).
+//! shortcut: the full variable set (`owner`, `remote_repo`, …) lands with
+//! the remote-identity slice.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -27,9 +31,9 @@ use std::process::Command;
 use thiserror::Error;
 
 use crate::config::schema::{CommandSpec, ProjectConfig, UserConfig};
+use crate::template::TemplateVars;
 
-/// The lifecycle phases tatami executes today. `pre-commit`/`pre-merge` etc.
-/// arrive with their commands.
+/// The lifecycle phases tatami executes today.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HookPhase {
     PreSwitch,
@@ -82,17 +86,17 @@ impl HookPhase {
 
 /// Decides whether a project-hook command may run. The real gate prompts;
 /// fakes answer from a script. Takes `&mut` because approving persists the
-/// record.
+/// record. `key` is the hook's config key or the alias name.
 pub trait ApprovalGate {
     /// `true` when the command may run.
-    fn approve(&mut self, phase: HookPhase, command: &str) -> bool;
+    fn approve(&mut self, key: &str, command: &str) -> bool;
 }
 
 /// Approves everything — tests and flows that carry no project config.
 pub struct NoGate;
 
 impl ApprovalGate for NoGate {
-    fn approve(&mut self, _phase: HookPhase, _command: &str) -> bool {
+    fn approve(&mut self, _key: &str, _command: &str) -> bool {
         true
     }
 }
@@ -145,7 +149,7 @@ pub struct HookParts<'a> {
     pub logs_dir: Option<&'a Path>,
 }
 
-impl<'a> HookParts<'a> {
+impl HookParts<'_> {
     pub fn none() -> Self {
         Self {
             hooks: &NO_HOOKS,
@@ -172,11 +176,14 @@ pub struct HookContext<'a> {
 }
 
 impl HookContext<'_> {
-    fn render(&self, command: &str) -> String {
-        command.replace("{{ workspace }}", self.workspace).replace(
-            "{{ workspace_path }}",
-            &self.workspace_path.display().to_string(),
-        )
+    fn render(&self, command: &str) -> Result<String, HookError> {
+        let mut vars = TemplateVars::new();
+        vars.insert("workspace", self.workspace.to_string())
+            .insert("workspace_path", self.workspace_path.display().to_string());
+        crate::template::render(command, &vars).map_err(|error| HookError::Template {
+            phase: self.phase.config_key(),
+            source: error,
+        })
     }
 }
 
@@ -210,6 +217,12 @@ pub enum HookError {
         #[source]
         source: std::io::Error,
     },
+    #[error("`{phase}` template could not be rendered: {source}")]
+    Template {
+        phase: &'static str,
+        #[source]
+        source: crate::template::TemplateError,
+    },
 }
 
 /// Runs a `pre-*` phase: user hooks first, then project hooks (each project
@@ -219,7 +232,7 @@ pub fn run_blocking(ctx: &HookContext<'_>, gate: &mut dyn ApprovalGate) -> Resul
     for (origin, spec) in ctx.hooks.specs(ctx.phase) {
         if origin == Origin::Project {
             for (_name, command) in entries(spec) {
-                if !gate.approve(ctx.phase, &command) {
+                if !gate.approve(ctx.phase.config_key(), &command) {
                     return Err(HookError::Denied {
                         phase: ctx.phase.config_key(),
                         command,
@@ -239,7 +252,7 @@ pub fn run_detached(ctx: &HookContext<'_>, out: &mut dyn Write, gate: &mut dyn A
         if origin == Origin::Project {
             let mut denied = false;
             for (_name, command) in entries(spec) {
-                if !gate.approve(ctx.phase, &command) {
+                if !gate.approve(ctx.phase.config_key(), &command) {
                     let _ = writeln!(
                         out,
                         "tatami: warning: project `{}` hook `{command}` was not approved — skipped",
@@ -285,7 +298,7 @@ fn execute_blocking(
 ) -> Result<(), HookError> {
     for (_name, command) in entries(spec) {
         // Names label commands in worktrunk; tatami reports the command itself.
-        let rendered = ctx.render(&command);
+        let rendered = ctx.render(&command)?;
         let status = Command::new("sh")
             .arg("-c")
             .arg(&rendered)
@@ -314,7 +327,7 @@ fn execute_detached(
 ) -> Result<(), HookError> {
     let pid = std::process::id();
     for (index, (_name, command)) in entries(spec).into_iter().enumerate() {
-        let rendered = ctx.render(&command);
+        let rendered = ctx.render(&command)?;
         let mut process = Command::new("sh");
         process.arg("-c").arg(&rendered).current_dir(cwd);
         if let Some(logs_dir) = ctx.logs_dir {
@@ -379,8 +392,8 @@ mod hook_should {
     }
 
     impl ApprovalGate for ScriptedGate {
-        fn approve(&mut self, _phase: HookPhase, command: &str) -> bool {
-            self.asked.borrow_mut().push(command.to_string());
+        fn approve(&mut self, key: &str, command: &str) -> bool {
+            self.asked.borrow_mut().push(format!("{key}:{command}"));
             self.answers.borrow_mut().pop().unwrap_or(true)
         }
     }
@@ -579,25 +592,6 @@ mod hook_should {
     }
 
     #[test]
-    fn does_nothing_without_a_configured_hook() {
-        let (_dir, cwd) = scratch();
-        let hooks = Hooks::none();
-        let ctx = ctx(HookPhase::PreRemove, &hooks, "ws", &cwd);
-        let mut gate = NoGate;
-
-        run_blocking(&ctx, &mut gate).unwrap();
-        run_detached(&ctx, &mut Vec::new(), &mut gate);
-
-        assert_eq!(std::fs::read_dir(cwd).unwrap().count(), 0);
-    }
-}
-
-#[cfg(test)]
-mod detached_logs_should {
-    use super::*;
-    use std::path::PathBuf;
-
-    #[test]
     fn routes_detached_output_to_the_log_directory() {
         let cwd = tempfile::tempdir().unwrap();
         let logs = tempfile::tempdir().unwrap();
@@ -613,8 +607,9 @@ mod detached_logs_should {
             hooks: &hooks,
             logs_dir: Some(logs.path()),
         };
+        let mut gate = NoGate;
 
-        run_detached(&ctx, &mut Vec::new(), &mut NoGate);
+        run_detached(&ctx, &mut Vec::new(), &mut gate);
 
         // The detached child runs concurrently; poll briefly for its trace.
         let mut found = None;
@@ -652,8 +647,22 @@ mod detached_logs_should {
             hooks: &hooks,
             logs_dir: None,
         };
+        let mut gate = NoGate;
 
         // No log dir: spawn succeeds and writes nothing anywhere else.
-        run_detached(&ctx, &mut Vec::new(), &mut NoGate);
+        run_detached(&ctx, &mut Vec::new(), &mut gate);
+    }
+
+    #[test]
+    fn does_nothing_without_a_configured_hook() {
+        let (_dir, cwd) = scratch();
+        let hooks = Hooks::none();
+        let ctx = ctx(HookPhase::PreRemove, &hooks, "ws", &cwd);
+        let mut gate = NoGate;
+
+        run_blocking(&ctx, &mut gate).unwrap();
+        run_detached(&ctx, &mut Vec::new(), &mut gate);
+
+        assert_eq!(std::fs::read_dir(cwd).unwrap().count(), 0);
     }
 }

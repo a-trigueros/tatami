@@ -88,21 +88,6 @@ fn validate_name(name: &str) -> Result<(), CreateError> {
     }
 }
 
-/// `workspace-path` minus the worktrunk filters tatami does not implement
-/// yet: anything outside `[A-Za-z0-9._-]` becomes `-`.
-fn sanitize(value: &str) -> String {
-    value
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || matches!(c, '.' | '_' | '-') {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect()
-}
-
 fn resolve_destination(
     template: Option<&str>,
     name: &str,
@@ -111,11 +96,10 @@ fn resolve_destination(
 ) -> Result<PathBuf, CreateError> {
     let raw = match template {
         Some(template) => {
-            let expanded = template
-                .replace("{{ workspace | sanitize }}", &sanitize(name))
-                .replace("{{ workspace }}", name)
-                .replace("{{ branch | sanitize }}", &sanitize(name))
-                .replace("{{ branch }}", name);
+            let mut vars = crate::template::TemplateVars::new();
+            vars.insert("workspace", name.to_string())
+                .insert("branch", name.to_string());
+            let expanded = crate::template::render(template, &vars)?;
             match expanded.strip_prefix("~/") {
                 Some(rest) => home.join(rest),
                 None => PathBuf::from(expanded),
@@ -162,6 +146,8 @@ pub enum CreateError {
     },
     #[error(transparent)]
     Hook(#[from] HookError),
+    #[error(transparent)]
+    Template(#[from] crate::template::TemplateError),
     #[error(transparent)]
     Jj(#[from] JjError),
 }
@@ -242,7 +228,9 @@ mod resolve_destination_should {
     }
 
     #[test]
-    fn leaves_unknown_variables_as_literals_for_now() {
+    fn renders_unknown_variables_as_empty() {
+        // minijinja lenient mode: `{{ owner }}` (worktrunk's variable, not
+        // provided by tatami yet) renders empty rather than failing.
         let dest = resolve_destination(
             Some(".wt/{{ owner }}-{{ workspace }}"),
             "feature",
@@ -250,7 +238,7 @@ mod resolve_destination_should {
             Path::new("/home/u"),
         )
         .unwrap();
-        assert_eq!(dest, PathBuf::from("/repo/main/.wt/{{ owner }}-feature"));
+        assert_eq!(dest, PathBuf::from("/repo/main/.wt/-feature"));
     }
 
     #[test]

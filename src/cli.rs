@@ -2,6 +2,7 @@
 //! generator and the binary share one source of truth.
 
 use clap::{Parser, Subcommand, ValueEnum};
+use std::ffi::OsString;
 
 /// Output formats for commands that support `--format`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -76,6 +77,10 @@ pub enum Command {
         #[command(subcommand)]
         command: StepCommand,
     },
+    /// Run a configured alias (`[aliases]` in the config) — everything else
+    /// lands here as an external subcommand
+    #[command(external_subcommand)]
+    Unknown(Vec<OsString>),
     /// Inspect tatami configuration
     Config {
         #[command(subcommand)]

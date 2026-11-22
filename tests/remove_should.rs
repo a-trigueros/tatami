@@ -135,7 +135,7 @@ fn an_unapproved_project_pre_remove_hook_aborts_the_removal() {
     // A gate that denies everything: no approval given.
     struct Deny;
     impl tatami::hook::ApprovalGate for Deny {
-        fn approve(&mut self, _phase: tatami::hook::HookPhase, _command: &str) -> bool {
+        fn approve(&mut self, _key: &str, _command: &str) -> bool {
             false
         }
     }

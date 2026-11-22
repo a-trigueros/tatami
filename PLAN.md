@@ -347,10 +347,27 @@ Notes épinglées (jj 0.47.1 + shells) :
       (plus de bruit sur le terminal ; le fichier est la trace — pas de
       détection d'échec, inchangé) ; `HookParts` bundle sources+logs
       (crée pour rester sous la limite clippy d'arité)
-- [ ] Aliases (`[aliases]`) + moteur minijinja complet (variables/filtres
-      hooks + `workspace-path`)
-- [ ] `copy-ignored` (après sourcing worktrunk)
+- [x] Moteur minijinja complet (`src/template`) : variables manquantes =
+      vides (lenient), `sanitize` = worktrunk exact (**seuls** `/` et `\`
+      deviennent `-`), `sanitize_db` = worktrunk-par shape (alnum lowercase,
+      runs → `_`, préfixe chiffre, troncature 44 + suffixe hash FNV-1a
+      base-36 3 chars — `shortcut:` hash non bit-identique à worktrunk),
+      `codename` non implémenté = erreur claire (listes petname à embarquer
+      le jour voulu)
+- [x] Aliases (`[aliases]`, user + projet) : `tt <alias> [args…]` via
+      external_subcommand ; positionnels → `{{ args }}` (joint,
+      shell-escapé), `--KEY=VALUE`/`--KEY VALUE` bindent une variable ;
+      accumulation user puis projet, commandes projet gated ; fail-fast,
+      exit 1 sur échec ; **les vraies sous-commandes gagnent toujours sur un
+      alias homonyme** (comportement clap, à documenter)
+      - `shortcut:` `--KEY` binalise sans vérifier que le template référence
+        la clé (worktrunk ne binde que si référencée) ; pas de `--` dur
+        (les positionnels après `--` sont acceptés comme positionnels)
+- [ ] `copy-ignored` (après sourcing worktrunk fait — copie des git-ignorés
+      via `.worktreeinclude` + excludes ; nécessite le crate `ignore` ou une
+      énumération jj ; `jj file list` n'a pas de `--ignored` en 0.47.1)
 - [ ] `tt merge --remove` (réviser)
+- [ ] `codename(n)` (listes petname embarquées, hash déterministe)
 
 ### Prochaine étape
 
