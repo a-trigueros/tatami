@@ -162,6 +162,11 @@ Chaque jalon livrera un binaire utilisable.
   (bookmark absent) fait foi.
 - **Stale** : réécrire `nom@` depuis un autre workspace rend le premier obsolète ;
   `tt switch` doit détecter et proposer `jj workspace update-stale`.
+- **CI/runner** : le téléchargement d'assets de release GitHub depuis les IP
+  partagées des runners est rate-limité en anonyme → `gh release download`
+  authentifié (`github.token`) ; le tarball jj embarque une entrée `./` avec
+  mode sticky + mtime → extraire dans un sous-répertoire dédié, jamais dans
+  le `/tmp` partagé (les deux contrats vérifiés sur les runs 12/13).
 - Pas de branche à poser par workspace : un commit `nom@` par workspace,
   bookmarks partagés au niveau repo.
 - « Propre/sale » n'existe pas tel quel : métriques utiles = `@` vide,
