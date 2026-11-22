@@ -1,5 +1,7 @@
 # Tatami
 
+[![CI](https://github.com/a-trigueros/tatami/actions/workflows/ci.yml/badge.svg)](https://github.com/a-trigueros/tatami/actions/workflows/ci.yml)
+
 [Worktrunk](https://github.com/max-sixty/worktrunk) pour
 [jujutsu](https://jj-vcs.dev) : un wrapper de haut niveau autour de `jj` pour
 gérer des **workspaces** — création, navigation, intégration, nettoyage — avec
@@ -13,15 +15,31 @@ tt merge                   # intègre le workspace courant dans main (rebase + f
 tt remove login            # oublie + met à la poubelle
 ```
 
-## Installation de l'intégration shell
+## Installation
+
+Prérequis : [jj](https://jj-vcs.dev) et une toolchain Rust récente. Les
+contrats jj sont épinglés empiriquement sur **0.47.1** (voir `PLAN.md`) —
+revalider avant toute montée de version de jj.
 
 ```text
-tt config shell install          # zsh ou bash (détecté via $SHELL, --shell pour forcer)
+cargo install --locked --git https://github.com/a-trigueros/tatami
+# ou, depuis un clone :
+cargo install --path .
+```
+
+## Intégration shell
+
+```text
+tatami config shell install       # zsh ou bash (détecté via $SHELL, --shell pour forcer)
+exec zsh                          # recharger le shell interactif
 ```
 
 Le wrapper `tt` intercepte `switch` et `merge --remove` (les deux impriment le
 chemin de destination ; le wrapper fait le `cd`) et passe tout le reste au
 binaire. Sans wrapper, `tt switch` imprime le chemin sans déplacer personne.
+
+Sur macOS, `zsh -i -c` ne source pas `~/.zshrc` : tester dans un terminal
+interactif, pas via `-c`.
 
 ## Configuration
 

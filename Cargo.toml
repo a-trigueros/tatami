@@ -2,6 +2,8 @@
 name = "tatami"
 version = "0.1.0"
 edition = "2024"
+description = "Worktrunk-style workspace manager for the jujutsu (jj) VCS"
+repository = "https://github.com/a-trigueros/tatami"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
