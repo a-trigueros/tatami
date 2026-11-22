@@ -329,7 +329,14 @@ fn execute_detached(
     for (index, (_name, command)) in entries(spec).into_iter().enumerate() {
         let rendered = ctx.render(&command)?;
         let mut process = Command::new("sh");
-        process.arg("-c").arg(&rendered).current_dir(cwd);
+        process
+            .arg("-c")
+            .arg(&rendered)
+            .current_dir(cwd)
+            // Detached: the child must never wait on the caller's stdin
+            // (a spawned test/daemon process has no usable console on
+            // Windows; msys sh can block or misbehave with an odd stdin).
+            .stdin(std::process::Stdio::null());
         if let Some(logs_dir) = ctx.logs_dir {
             // Detached output is routed to a per-hook log file instead of the
             // caller's terminal — no failure detection, the file is the trace.
@@ -617,6 +624,7 @@ mod hook_should {
         // The child runs concurrently; poll generously — a cold Git Bash
         // sh.exe can take over a second to start (Windows).
         let mut found = None;
+        let mut observed: Vec<(String, String)> = Vec::new();
         for _ in 0..200 {
             let mut entries: Vec<PathBuf> = std::fs::read_dir(logs.path())
                 .into_iter()
@@ -624,16 +632,24 @@ mod hook_should {
                 .filter_map(|entry| entry.ok())
                 .map(|entry| entry.path())
                 .collect();
-            if let Some(log) = entries.pop() {
-                let content = std::fs::read_to_string(log.clone()).unwrap_or_default();
+            observed.clear();
+            for log in &entries {
+                let content = std::fs::read_to_string(log).unwrap_or_default();
+                observed.push((log.display().to_string(), content.clone()));
                 if content.contains("logged-line") {
-                    found = Some(log);
+                    found = Some(log.clone());
                     break;
                 }
             }
+            if found.is_some() {
+                break;
+            }
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
-        assert!(found.is_some(), "no log file captured the hook output");
+        assert!(
+            found.is_some(),
+            "no log file captured the hook output — saw: {observed:?}"
+        );
     }
 
     #[test]
