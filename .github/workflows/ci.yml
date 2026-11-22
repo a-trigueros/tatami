@@ -32,8 +32,12 @@ jobs:
           gh release download "$JJ_VERSION" --repo jj-vcs/jj \
             --pattern "jj-*-x86_64-unknown-linux-musl.tar.gz" \
             --output /tmp/jj.tar.gz --clobber
-          tar -xzf /tmp/jj.tar.gz -C /tmp
-          sudo mv /tmp/jj /usr/local/bin/jj
+          # Extract into a dedicated directory: the tarball carries a `./`
+          # entry whose sticky-bit mode/utime tar would try to apply to the
+          # extraction root itself — denied on the shared /tmp.
+          mkdir -p /tmp/jj-install
+          tar -xzf /tmp/jj.tar.gz -C /tmp/jj-install
+          sudo mv /tmp/jj-install/jj /usr/local/bin/jj
           jj --version
       # The shell-integration proofs run real zsh (bash is preinstalled).
       - run: sudo apt-get update && sudo apt-get install -y zsh
