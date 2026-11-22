@@ -626,7 +626,7 @@ mod hook_should {
         let mut found = None;
         let mut observed: Vec<(String, String)> = Vec::new();
         for _ in 0..200 {
-            let mut entries: Vec<PathBuf> = std::fs::read_dir(logs.path())
+            let entries: Vec<PathBuf> = std::fs::read_dir(logs.path())
                 .into_iter()
                 .flatten()
                 .filter_map(|entry| entry.ok())
