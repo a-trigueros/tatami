@@ -89,6 +89,9 @@ pre-start = "cp .env.example .env"   # soumis à approbation
 - hooks projet (`[[pre-start]]`…) soumis à **approbation** au premier run
   (`tt config approvals add` pour les pré-approuver, `--yes` pour contourner
   une invocation) ;
+  ⚠️ les hooks s'exécutent via `sh -c` : **quoter les variables contenant des
+  chemins** (`cp '{{ workspace_path }}/.env' .env`), sinon `sh` mange les
+  backslashes des chemins Windows ;
 - `[step.copy-ignored]` : `tt step copy-ignored` copie les fichiers
   git-ignorés du workspace primaire vers le courant (`.worktreeinclude`
   filtre, `--force` écrase).
