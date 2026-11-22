@@ -89,3 +89,7 @@ La version jj de référence est verrouillée dans `.github/workflows/ci.yml`.
 
 `PLAN.md` documente les décisions, les contrats jj épinglés empiriquement et
 l'avancement.
+
+## Licence
+
+[MIT](LICENSE).
