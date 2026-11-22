@@ -104,6 +104,9 @@ cargo clippy --all-targets
 
 CI : fmt, clippy, tests complets avec vrai `jj` (Linux), tier rapide (macOS).
 La version jj de référence est verrouillée dans `.github/workflows/ci.yml`.
+Un tag `v*` déclenche la construction d'archives multi-plateformes
+(linux-musl x86_64, macOS arm64/x86_64) publiées en release GitHub
+(`.github/workflows/release.yml`).
 
 `PLAN.md` documente les décisions, les contrats jj épinglés empiriquement et
 l'avancement.
