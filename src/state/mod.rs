@@ -85,7 +85,7 @@ impl WorkspaceState for FileState {
 pub fn host_root(workspace_root: &Path) -> Result<PathBuf, StateError> {
     let repo_probe = workspace_root.join(".jj").join("repo");
     if repo_probe.is_dir() {
-        return Ok(workspace_root.to_path_buf());
+        return Ok(dunce::simplified(workspace_root).to_path_buf());
     }
     if !repo_probe.is_file() {
         return Err(StateError::NoRepoStorage {
@@ -105,13 +105,15 @@ pub fn host_root(workspace_root: &Path) -> Result<PathBuf, StateError> {
             path: repo_probe.clone(),
             source,
         })?;
-    storage
+    let root = storage
         .parent()
         .and_then(|jj_dir| jj_dir.parent())
         .map(Path::to_path_buf)
+        .map(|root| dunce::simplified(&root).to_path_buf())
         .ok_or_else(|| StateError::MalformedPointer {
             path: repo_probe.clone(),
-        })
+        })?;
+    Ok(root)
 }
 
 /// Absolute directory where tatami's repo-global state lives for the repo

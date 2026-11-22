@@ -192,10 +192,19 @@ impl Jj for CliJj {
         let output = self.run(&["workspace", "list", "-T", WORKSPACE_LIST_TEMPLATE])?;
         let parsed: Result<Vec<WorkspaceInfo>, _> =
             output.lines().map(serde_json::from_str).collect();
-        parsed.map_err(|source| JjError::ParseOutput {
+        let mut workspaces: Vec<WorkspaceInfo> = parsed.map_err(|source| JjError::ParseOutput {
             command: "jj workspace list".to_string(),
             source,
-        })
+        })?;
+        // jj records canonicalized roots, verbatim (`\\?\C:\…`) on Windows:
+        // normalize so display, state and tests speak plain paths.
+        for workspace in &mut workspaces {
+            workspace.root = workspace
+                .root
+                .as_ref()
+                .map(|root| dunce::simplified(root).to_path_buf());
+        }
+        Ok(workspaces)
     }
 
     fn workspace_add(&self, name: &str, destination: &Path) -> Result<(), JjError> {

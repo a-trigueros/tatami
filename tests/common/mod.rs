@@ -92,15 +92,10 @@ impl TempRepo {
     /// symlinks in the paths it prints (macOS `/var` → `/private/var`).
     pub fn path(&self) -> PathBuf {
         // Canonicalize resolves the macOS /tmp → /private/tmp mapping (so
-        // expected paths match jj's recorded roots) — but on Windows it
-        // returns a verbatim path (`\\?\C:\…`), and tatami/jj speak plain
-        // paths: strip the prefix.
-        let path = self.dir.path().join("repo").canonicalize().unwrap();
-        let as_text = path.as_os_str().to_string_lossy();
-        match as_text.strip_prefix(r"\\?\") {
-            Some(rest) => PathBuf::from(rest),
-            None => path,
-        }
+        // expected paths match jj's recorded roots) — but canonicalized
+        // paths are verbatim on Windows (`\\?\C:\…`) and tatami/jj speak
+        // plain paths: simplify.
+        dunce::simplified(&self.dir.path().join("repo").canonicalize().unwrap()).to_path_buf()
     }
 
     /// Directory hosting the repo — itself not a repo (for "outside a repo"
