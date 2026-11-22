@@ -53,7 +53,7 @@ workspace-path = ".wt/{{ workspace | sanitize }}"
 server = "npm run dev"
 
 [aliases]
-hello = "echo bonjour {{ workspace }} - {{ args }}"
+note = "jj describe -m '{{ args }}'"
 
 [projects."github.com/owner/repo"]
 pre-start = "cp .env.example .env"   # soumis à approbation
