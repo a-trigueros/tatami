@@ -29,14 +29,22 @@ cargo install --path .
 
 ## Intégration shell
 
+tatami n'écrit jamais dans vos rc : il **imprime** le bloc à coller.
+
 ```text
-tatami config shell install       # zsh ou bash (détecté via $SHELL, --shell pour forcer)
-exec zsh                          # recharger le shell interactif
+tatami config shell init          # imprime le bloc (zsh ou bash, détecté via $SHELL, --shell pour forcer)
 ```
 
-Le wrapper `tt` intercepte `switch` et `merge --remove` (les deux impriment le
-chemin de destination ; le wrapper fait le `cd`) et passe tout le reste au
-binaire. Sans wrapper, `tt switch` imprime le chemin sans déplacer personne.
+Ajoutez le bloc affiché à votre rc — ou une seule ligne :
+
+```text
+eval "$(tatami config shell init zsh)"
+```
+
+Le wrapper `tt` intercepte `switch` et `merge` (les deux impriment le chemin de
+destination ; le wrapper fait le `cd`) et passe tout le reste au binaire. Sans
+wrapper, `tt switch` imprime le chemin sans déplacer personne. En zsh, placez
+le bloc après `compinit` pour que les complétions s'enregistrent.
 
 Sur macOS, `zsh -i -c` ne source pas `~/.zshrc` : tester dans un terminal
 interactif, pas via `-c`.

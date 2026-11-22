@@ -24,6 +24,7 @@ Résolution : `~/.config/tatami/config.toml`, sinon fallback
 | 5 | Repos colocalisés (jj+git) | dans le périmètre v1 |
 | 6 | Création workspace | bookmark du même nom créé par défaut (`jj bookmark create <nom> -r @`) |
 | 7 | Env `WORKTRUNK_*` | non acceptée ; tatami n'expose que `TATAMI_*` (même convention d'imbrication `__`) |
+| 8 | Intégration shell (révisé 2026-11-22) | `tatami config shell init` **imprime** le bloc à coller dans le rc — tatami n'écrit jamais dans les rc ni ne gère des fichiers de complétion ; le wrapper intercepte `switch` **et** `merge`, complétions branchées par `source <(tatami config completion <sh>)` (zsh : bloc à placer après `compinit`) |
 
 ## 3. Surface CLI cible (mapping `wt` → `tt`)
 
@@ -37,7 +38,7 @@ Résolution : `~/.config/tatami/config.toml`, sinon fallback
 | `wt rebase` | `tt rebase` | `jj rebase -d <cible>` des commits du workspace |
 | `wt step …` | `tt step …` | primitives jj : `commit`, `squash`, `rebase`, `push`, `diff`, `for-each`, `prune`, **`copy-ignored`** (ne fait PAS partie de la création — les utilisateurs le câblent en hook post-start), `eval`, `rename` (nouveau). `promote`/`tether` : hors périmètre v1 |
 | `wt hook …` | `tt hook …` | événements identiques (`pre/post` × `switch/start/commit/merge/remove`) ; approbation premier run dans `~/.config/tatami/approvals.toml` (fallback worktrunk, même règle que la config) |
-| `wt config …` | `tt config …` | `create/show/shell install\|uninstall/state` |
+| `wt config …` | `tt config …` | `create/show/shell init/state` |
 
 Globales : `-C <path>`, `--config`, `--config-set`, `-v/-vv`, `-y/--yes`, `--no-hooks`.
 

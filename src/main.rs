@@ -8,9 +8,6 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Hello { name } => {
-            println!("Hello, {name}!");
-        }
         Command::List { format } => {
             let dir = std::env::current_dir().unwrap_or_else(|error| {
                 eprintln!("tatami: cannot determine the current directory: {error}");
@@ -445,17 +442,14 @@ fn main() {
                 });
             }
             ConfigCommand::Shell { command } => match command {
-                ShellCommand::Install { shell } => {
-                    cmd::shell::install(&shell_env(), shell.as_deref()).unwrap_or_else(|error| {
-                        eprintln!("tatami: {error}");
-                        std::process::exit(1);
-                    });
-                }
-                ShellCommand::Uninstall { shell } => {
-                    cmd::shell::uninstall(&shell_env(), shell.as_deref()).unwrap_or_else(|error| {
-                        eprintln!("tatami: {error}");
-                        std::process::exit(1);
-                    });
+                ShellCommand::Init { shell } => {
+                    print!(
+                        "{}",
+                        cmd::shell::init(&shell_env(), shell.as_deref()).unwrap_or_else(|error| {
+                            eprintln!("tatami: {error}");
+                            std::process::exit(1);
+                        })
+                    );
                 }
                 ShellCommand::Completion { shell } => {
                     print!(
@@ -572,11 +566,9 @@ fn main() {
 }
 
 fn shell_env() -> cmd::shell::ShellEnv {
-    let config = paths::ConfigEnv::from_env().unwrap_or_else(|error| {
-        eprintln!("tatami: {error}");
-        std::process::exit(1);
-    });
-    cmd::shell::ShellEnv::from_config_env(&config, std::env::var("SHELL").ok())
+    cmd::shell::ShellEnv {
+        env_shell: std::env::var("SHELL").ok(),
+    }
 }
 
 /// The injected clock for trash naming. One read, at the boundary.

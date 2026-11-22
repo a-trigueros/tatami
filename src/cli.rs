@@ -32,12 +32,6 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Print a greeting
-    Hello {
-        /// Name to greet
-        #[arg(default_value = "world")]
-        name: String,
-    },
     /// List all workspaces with their working-copy status
     List {
         /// Output format
@@ -182,14 +176,9 @@ pub enum StepCommand {
 
 #[derive(Subcommand, Debug)]
 pub enum ShellCommand {
-    /// Add the `tt` wrapper (cd on switch) and completions to your rc file
-    Install {
-        /// Target shell (zsh, bash); defaults to $SHELL
-        #[arg(long)]
-        shell: Option<String>,
-    },
-    /// Remove the integration block from your rc file
-    Uninstall {
+    /// Print the shell integration block (wrapper `tt` + completions) to add
+    /// to your rc file — tatami never writes rc files itself
+    Init {
         /// Target shell (zsh, bash); defaults to $SHELL
         #[arg(long)]
         shell: Option<String>,
