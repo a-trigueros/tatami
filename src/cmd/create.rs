@@ -2,10 +2,12 @@
 //! bookmark), then behave like a switch to it.
 //!
 //! Destination rules (worktrunk parity, sourced from its docs):
-//! - no template configured → a **sibling of the repo root** named
+//! - no template configured → a **sibling of the root repository** named
 //!   `<repo>.<workspace>` (`../<repo>.<branch>` upstream);
 //! - `workspace-path` (legacy `worktree-path`) configured → expanded with a
-//!   minimal variable set; relative templates resolve against the current
+//!   minimal variable set; `{{ repo }}` is the **root repository's** directory
+//!   name (the workspace hosting the shared jj storage), not the current
+//!   workspace's (issue #1); relative templates resolve against the current
 //!   workspace root, `~` against the home directory.
 //!   shortcut: hand-rolled expansion for `{{ workspace }}`/`{{ branch }}`
 //!   and the `sanitize` filter only — the full minijinja engine (all
@@ -22,6 +24,7 @@ use thiserror::Error;
 
 use crate::hook::{self, ApprovalGate, HookContext, HookError, HookParts, HookPhase};
 use crate::jj::{Jj, JjError};
+use crate::state::StateError;
 
 pub fn run(
     jj: &dyn Jj,
@@ -33,7 +36,11 @@ pub fn run(
     gate: &mut dyn ApprovalGate,
 ) -> Result<PathBuf, CreateError> {
     validate_name(name)?;
-    let destination = resolve_destination(template, name, current_root, home)?;
+    // Repo identity anchors on the root repository — the workspace hosting
+    // the shared jj storage. Creating from inside a workspace (issue #1)
+    // must not adopt the current workspace's name as the repo's.
+    let repo_root = crate::state::host_root(current_root)?;
+    let destination = resolve_destination(template, name, current_root, &repo_root, home)?;
     if let Some(parent) = destination.parent() {
         // jj requires the destination's parent to exist (verified 0.47.1:
         // `Cannot access … No such file or directory` otherwise).
@@ -106,6 +113,7 @@ fn resolve_destination(
     template: Option<&str>,
     name: &str,
     current_root: &Path,
+    repo_root: &Path,
     home: &Path,
 ) -> Result<PathBuf, CreateError> {
     let raw = match template {
@@ -113,8 +121,10 @@ fn resolve_destination(
             let mut vars = crate::template::TemplateVars::new();
             vars.insert("workspace", name.to_string())
                 .insert("branch", name.to_string());
-            // Worktrunk parity: `repo` is the repository directory name.
-            if let Some(repo) = current_root.file_name() {
+            // Worktrunk parity: `repo` is the repository directory name —
+            // the root repository's, not the current workspace's (issue #1:
+            // creating from inside a workspace keeps the repo's identity).
+            if let Some(repo) = repo_root.file_name() {
                 vars.insert("repo", repo.to_string_lossy().to_string());
             }
             // Strict: a wrong path is a real hazard — `~/factory/{{ repo }}`
@@ -126,21 +136,22 @@ fn resolve_destination(
             }
         }
         None => {
-            let repo_name =
-                current_root
-                    .file_name()
-                    .ok_or_else(|| CreateError::UnresolvableDestination {
-                        root: current_root.to_path_buf(),
-                    })?;
-            let sibling =
-                current_root
-                    .parent()
-                    .ok_or_else(|| CreateError::UnresolvableDestination {
-                        root: current_root.to_path_buf(),
-                    })?;
             // Worktrunk's default layout sanitizes the name: the workspace
             // `feat/test` is one directory `repo.feat-test`, not a nested
-            // `repo.feat/test`.
+            // `repo.feat/test`. The anchor is the root repository, not the
+            // current workspace (issue #1).
+            let repo_name =
+                repo_root
+                    .file_name()
+                    .ok_or_else(|| CreateError::UnresolvableDestination {
+                        root: repo_root.to_path_buf(),
+                    })?;
+            let sibling =
+                repo_root
+                    .parent()
+                    .ok_or_else(|| CreateError::UnresolvableDestination {
+                        root: repo_root.to_path_buf(),
+                    })?;
             sibling.join(format!(
                 "{}.{}",
                 repo_name.to_string_lossy(),
@@ -166,6 +177,8 @@ pub enum CreateError {
     InvalidName { name: String },
     #[error("cannot resolve a destination from root {root}")]
     UnresolvableDestination { root: PathBuf },
+    #[error(transparent)]
+    State(#[from] StateError),
     #[error("filesystem error: {source}")]
     Io {
         #[source]
@@ -190,8 +203,25 @@ mod resolve_destination_should {
 
     #[test]
     fn defaults_to_a_sibling_of_the_repo_root() {
-        let dest = resolve_destination(None, "feature", &root(), Path::new("/home/u")).unwrap();
+        let dest =
+            resolve_destination(None, "feature", &root(), &root(), Path::new("/home/u")).unwrap();
         assert_eq!(dest, PathBuf::from("/repo/main.feature"));
+    }
+
+    #[test]
+    fn defaults_to_a_sibling_of_the_root_repository_even_from_a_secondary_workspace() {
+        // Issue #1: the sibling rule anchors on the repo root — creating from
+        // inside a workspace must not nest the new one under the current one.
+        let current_workspace = Path::new("/repo/factory/myrepo/feat-myfeat1");
+        let dest = resolve_destination(
+            None,
+            "fix/emergency",
+            current_workspace,
+            Path::new("/repo/myrepo"),
+            Path::new("/home/u"),
+        )
+        .unwrap();
+        assert_eq!(dest, PathBuf::from("/repo/myrepo.fix-emergency"));
     }
 
     #[test]
@@ -199,6 +229,7 @@ mod resolve_destination_should {
         let dest = resolve_destination(
             Some(".wt/{{ workspace }}"),
             "feature",
+            &root(),
             &root(),
             Path::new("/home/u"),
         )
@@ -212,6 +243,7 @@ mod resolve_destination_should {
             Some(".wt/{{ workspace | sanitize }}"),
             "feature/login-fix",
             &root(),
+            &root(),
             Path::new("/home/u"),
         )
         .unwrap();
@@ -223,6 +255,7 @@ mod resolve_destination_should {
         let dest = resolve_destination(
             Some(".wt/{{ branch }}"),
             "feature",
+            &root(),
             &root(),
             Path::new("/home/u"),
         )
@@ -236,6 +269,7 @@ mod resolve_destination_should {
             Some("/elsewhere/{{ workspace }}"),
             "feature",
             &root(),
+            &root(),
             Path::new("/home/u"),
         )
         .unwrap();
@@ -247,6 +281,7 @@ mod resolve_destination_should {
         let dest = resolve_destination(
             Some("~/workspaces/{{ workspace }}"),
             "feature",
+            &root(),
             &root(),
             Path::new("/home/u"),
         )
@@ -262,6 +297,7 @@ mod resolve_destination_should {
         let error = resolve_destination(
             Some(".wt/{{ owner }}-{{ workspace }}"),
             "feature",
+            &root(),
             &root(),
             Path::new("/home/u"),
         )
@@ -279,10 +315,28 @@ mod resolve_destination_should {
             Some("~/factory/{{ repo }}/{{ workspace }}"),
             "feature",
             &root(),
+            &root(),
             Path::new("/home/u"),
         )
         .unwrap();
         assert_eq!(dest, PathBuf::from("/home/u/factory/main/feature"));
+    }
+
+    #[test]
+    fn resolves_the_repo_variable_from_the_root_repository_not_the_current_workspace() {
+        // Issue #1: running `tt switch -c` from inside a secondary workspace
+        // (`<repo>/feat-myfeat1`) must still build the path from the repo's
+        // name — the current workspace's name is not the repository's.
+        let current_workspace = Path::new("/repo/factory/myrepo/feat-myfeat1");
+        let dest = resolve_destination(
+            Some("~/factory/{{ repo }}/{{ branch | sanitize }}"),
+            "fix/emergency",
+            current_workspace,
+            Path::new("/repo/myrepo"),
+            Path::new("/home/u"),
+        )
+        .unwrap();
+        assert_eq!(dest, PathBuf::from("/home/u/factory/myrepo/fix-emergency"));
     }
 
     #[test]

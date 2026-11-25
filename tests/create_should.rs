@@ -104,6 +104,56 @@ fn an_in_repo_template_does_not_pollute_the_main_snapshot() {
 }
 
 #[test]
+fn creating_from_a_secondary_workspace_lands_in_the_repo_named_directory() {
+    // Issue #1: `tt switch -c fix/emergency` run from inside a workspace of
+    // `$HOME/myrepo` produced `~/factory/feat-myfeat1/fix-emergency`; the
+    // repo name must come from the root repository, so
+    // `~/factory/myrepo/fix-emergency`.
+    let repo = TempRepo::init();
+    let home = tempfile::tempdir().unwrap();
+    let config = write_user_config(
+        home.path(),
+        "workspace-path = \"~/factory/{{ repo }}/{{ branch | sanitize }}\"\n",
+    );
+
+    repo.add_workspace("feat-myfeat1");
+    let current_workspace = repo.outside_dir().join("feat-myfeat1");
+
+    let jj = CliJj::at(current_workspace.clone());
+    let dest = create::run(
+        &jj,
+        "fix/emergency",
+        config.workspace_path(),
+        &current_workspace,
+        home.path(),
+        HookParts::none(),
+        &mut NoGate,
+    )
+    .expect("create from a secondary workspace");
+
+    let repo_dir = repo.path();
+    let repo_name = repo_dir.file_name().unwrap().to_str().unwrap();
+    assert_eq!(
+        dest,
+        home.path()
+            .join("factory")
+            .join(repo_name)
+            .join("fix-emergency")
+    );
+    // The workspace is real and where the template said. jj records
+    // canonical roots (macOS `/var` → `/private/var`): canonicalize the
+    // returned path before comparing, matching TempRepo::path's convention.
+    let recorded = dunce::simplified(&dest.canonicalize().unwrap()).to_path_buf();
+    let listed = jj
+        .workspaces()
+        .unwrap()
+        .into_iter()
+        .find(|w| w.name == "fix/emergency")
+        .expect("created workspace listed");
+    assert_eq!(listed.root, Some(recorded));
+}
+
+#[test]
 fn runs_the_start_hooks_in_the_new_workspace() {
     let repo = TempRepo::init();
     let home = tempfile::tempdir().unwrap();
