@@ -33,13 +33,14 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// List all workspaces with their working-copy status
-    #[command(alias = "ls")]
+    #[command(visible_alias = "ls")]
     List {
         /// Output format
         #[arg(long, value_enum, default_value = "text")]
         format: ListFormat,
     },
     /// Resolve the workspace to switch to (the shell wrapper performs the cd)
+    #[command(visible_alias = "sw")]
     Switch {
         /// Workspace name, or `-` for the previous one; omitted for the picker
         name: Option<String>,
@@ -48,6 +49,7 @@ pub enum Command {
         create: bool,
     },
     /// Forget a workspace and move its directory to the tatami trash
+    #[command(visible_alias = "rm")]
     Remove {
         /// Workspace to remove (cannot be the current one or the host of the
         /// shared repo storage)
@@ -57,6 +59,7 @@ pub enum Command {
         keep_bookmark: bool,
     },
     /// Re-parent the current workspace's commits onto the target bookmark
+    #[command(visible_alias = "rb")]
     Rebase {
         /// Target bookmark; defaults to main, then master, then trunk
         target: Option<String>,
@@ -69,6 +72,7 @@ pub enum Command {
     },
     /// Integrate the current workspace into the target bookmark (rebase if
     /// diverged, then fast-forward)
+    #[command(visible_alias = "mg")]
     Merge {
         /// Target bookmark; defaults to main, then master, then trunk
         target: Option<String>,
@@ -229,6 +233,49 @@ mod cli_should {
                 assert!(keep_bookmark, "--keep-bookmark must keep it");
             }
             other => panic!("expected Remove, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shortcuts_resolve_to_their_canonical_subcommand() {
+        fn parses(argv: &[&str]) -> Command {
+            Cli::try_parse_from(std::iter::once("tatami").chain(argv.iter().copied()))
+                .unwrap_or_else(|error| panic!("`tt {}` must parse: {error}", argv.join(" ")))
+                .command
+        }
+        assert!(matches!(parses(&["ls"]), Command::List { .. }));
+        assert!(matches!(
+            parses(&["sw", "ws2"]),
+            Command::Switch { ref name, .. } if name.as_deref() == Some("ws2")
+        ));
+        assert!(matches!(
+            parses(&["rm", "ws2"]),
+            Command::Remove { ref name, .. } if name == "ws2"
+        ));
+        assert!(matches!(parses(&["mg", "main"]), Command::Merge { .. }));
+        assert!(matches!(parses(&["rb", "main"]), Command::Rebase { .. }));
+    }
+
+    #[test]
+    fn shortcuts_are_listed_in_the_help() {
+        use clap::CommandFactory as _;
+        let command = Cli::command();
+        for (subcommand, alias) in [
+            ("list", "ls"),
+            ("switch", "sw"),
+            ("remove", "rm"),
+            ("merge", "mg"),
+            ("rebase", "rb"),
+        ] {
+            let aliases = command
+                .find_subcommand(subcommand)
+                .unwrap_or_else(|| panic!("{subcommand} must exist"))
+                .get_visible_aliases()
+                .collect::<Vec<_>>();
+            assert!(
+                aliases.contains(&alias),
+                "`{alias}` must be a visible alias of `{subcommand}`, got: {aliases:?}"
+            );
         }
     }
 }

@@ -1,7 +1,7 @@
 //! `tt config shell init` — prints the shell integration; tatami never
 //! writes rc files. The block defines a `tt()` wrapper that intercepts
-//! `switch` and `merge` (both print the destination path on stdout and the
-//! wrapper `cd`s to it) and sources the completions dynamically. The user
+//! `switch`/`sw` and `merge`/`mg` (both print the destination path on stdout
+//! and the wrapper `cd`s to it) and sources the completions dynamically. The user
 //! pastes the block into their rc — or evals it:
 //! `eval "$(tatami config shell init zsh)"`.
 //!
@@ -89,8 +89,8 @@ const START_MARKER: &str = "# >>> tatami shell integration >>>";
 const END_MARKER: &str = "# <<< tatami shell integration <<<";
 
 /// The rc block for `shell`, markers included so users can find and replace
-/// it later. The wrapper intercepts `switch` and `merge`: both subcommands
-/// print their destination (landing) path on stdout and the wrapper cds to
+/// it later. The wrapper intercepts `switch`/`sw` and `merge`/`mg`: both
+/// subcommands print their destination (landing) path on stdout and the wrapper cds to
 /// it; everything else — and any empty stdout — passes through untouched.
 fn integration_block(shell: Shell) -> String {
     let header = format!(
@@ -104,7 +104,7 @@ fn integration_block(shell: Shell) -> String {
             "{header}\n\
              # zsh: place after `compinit` so completions register.\n\
              tt() {{\n  \
-             if [[ \"$1\" == \"switch\" || \"$1\" == \"merge\" ]]; then\n    \
+             if [[ \"$1\" == \"switch\" || \"$1\" == \"sw\" || \"$1\" == \"merge\" || \"$1\" == \"mg\" ]]; then\n    \
              local destination\n    \
              if destination=$(command tatami \"$@\") && [[ -n \"$destination\" ]]; then\n      \
              cd \"$destination\"\n    \
@@ -118,7 +118,7 @@ fn integration_block(shell: Shell) -> String {
         Shell::Bash => format!(
             "{header}\n\
              tt() {{\n  \
-             if [ \"$1\" = \"switch\" ] || [ \"$1\" = \"merge\" ]; then\n    \
+             if [ \"$1\" = \"switch\" ] || [ \"$1\" = \"sw\" ] || [ \"$1\" = \"merge\" ] || [ \"$1\" = \"mg\" ]; then\n    \
              local destination\n    \
              if destination=$(command tatami \"$@\") && [ -n \"$destination\" ]; then\n      \
              cd \"$destination\"\n    \
@@ -143,13 +143,13 @@ fn completion_script(shell: Shell) -> String {
 # `tatami config shell init`; place this after `compinit` in your rc.
 _tatami() {
   if (( CURRENT == 2 )); then
-    local -a cmds=(list ls switch merge rebase remove step config)
+    local -a cmds=(list ls switch sw merge mg rebase rb remove rm step config)
     _describe -t tatami-cmds command cmds
     return
   fi
   local sub="${words[2]}" candidates
   case "$sub" in
-    switch|remove|merge|rebase)
+    switch|sw|remove|rm|merge|mg|rebase|rb)
       candidates=("${(f)$(command tatami __complete "$sub" 2>/dev/null)}")
       (( ${#candidates} )) && _describe -t tatami-candidates "$sub" candidates
       ;;
@@ -163,11 +163,11 @@ _tatami() {
 _tatami() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "list ls switch merge rebase remove step config" -- "$cur"))
+    COMPREPLY=($(compgen -W "list ls switch sw merge mg rebase rb remove rm step config" -- "$cur"))
     return
   fi
   case "${COMP_WORDS[1]}" in
-    switch|remove|merge|rebase)
+    switch|sw|remove|rm|merge|mg|rebase|rb)
       COMPREPLY=($(compgen -W "$(command tatami __complete "${COMP_WORDS[1]}" 2>/dev/null)" -- "$cur"))
       ;;
   esac
@@ -202,17 +202,17 @@ mod shell_should {
     }
 
     #[test]
-    fn the_wrapper_intercepts_switch_and_merge() {
+    fn the_wrapper_intercepts_switch_and_merge_and_their_shortcuts() {
         for shell in [Shell::Zsh, Shell::Bash] {
             let block = integration_block(shell);
             let interceptor = if shell == Shell::Zsh {
-                "[[ \"$1\" == \"switch\" || \"$1\" == \"merge\" ]]"
+                "[[ \"$1\" == \"switch\" || \"$1\" == \"sw\" || \"$1\" == \"merge\" || \"$1\" == \"mg\" ]]"
             } else {
-                "[ \"$1\" = \"switch\" ] || [ \"$1\" = \"merge\" ]"
+                "[ \"$1\" = \"switch\" ] || [ \"$1\" = \"sw\" ] || [ \"$1\" = \"merge\" ] || [ \"$1\" = \"mg\" ]"
             };
             assert!(
                 block.contains(interceptor),
-                "{:?} block must intercept switch and merge: {block:?}",
+                "{:?} block must intercept switch/merge and their shortcuts: {block:?}",
                 shell.label()
             );
         }
@@ -318,8 +318,21 @@ mod shell_should {
                 shell.label()
             );
             assert!(
-                script.contains("switch|remove|merge|rebase"),
-                "{:?} script must complete workspaces and bookmarks: {script:?}",
+                script.contains("switch|sw|remove|rm|merge|mg|rebase|rb"),
+                "{:?} script must complete workspaces and bookmarks for shortcuts too: {script:?}",
+                shell.label()
+            );
+        }
+    }
+
+    #[test]
+    fn completion_scripts_advertise_the_shortcuts() {
+        let commands = "list ls switch sw merge mg rebase rb remove rm step config";
+        for shell in [Shell::Zsh, Shell::Bash] {
+            let script = completion_script(shell);
+            assert!(
+                script.contains(commands),
+                "{:?} script must list every command and shortcut: {script:?}",
                 shell.label()
             );
         }

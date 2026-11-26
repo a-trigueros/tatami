@@ -80,39 +80,41 @@ fn the_pasted_wrapper_cds_to_the_switched_workspace() {
         } else {
             ".bashrc"
         });
-        let output = match run_in_shell(
-            interpreter,
-            &format!("source {rc:?}; tt switch ws2 && pwd"),
-            &home_path,
-            &repo,
-        ) {
-            Some(output) => output,
-            None => {
-                println!("{interpreter} is not installed; skipping this proof");
-                continue;
-            }
-        };
+        for invocation in ["tt switch ws2", "tt sw ws2"] {
+            let output = match run_in_shell(
+                interpreter,
+                &format!("source {rc:?}; {invocation} && pwd"),
+                &home_path,
+                &repo,
+            ) {
+                Some(output) => output,
+                None => {
+                    println!("{interpreter} is not installed; skipping this proof");
+                    continue;
+                }
+            };
 
-        assert!(
-            output.status.success(),
-            "{interpreter} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        // The block sources completions dynamically; a wrong command path
-        // would print clap's error here without failing the cd (regression
-        // guard: the completion wiring must not error at shell startup).
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            !stderr.contains("unrecognized subcommand"),
-            "{interpreter} startup errors: {stderr:?}"
-        );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let last_line = stdout.lines().last().expect("pwd output");
-        assert_eq!(
-            Path::new(last_line),
-            ws2_root.as_path(),
-            "{interpreter} did not cd: {stdout:?}"
-        );
+            assert!(
+                output.status.success(),
+                "{interpreter} failed on `{invocation}`: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            // The block sources completions dynamically; a wrong command path
+            // would print clap's error here without failing the cd (regression
+            // guard: the completion wiring must not error at shell startup).
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                !stderr.contains("unrecognized subcommand"),
+                "{interpreter} startup errors: {stderr:?}"
+            );
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let last_line = stdout.lines().last().expect("pwd output");
+            assert_eq!(
+                Path::new(last_line),
+                ws2_root.as_path(),
+                "{interpreter} did not cd on `{invocation}`: {stdout:?}"
+            );
+        }
     }
 }
 
@@ -120,47 +122,52 @@ fn the_pasted_wrapper_cds_to_the_switched_workspace() {
 /// brings the caller back to the landing root (the host workspace here).
 #[test]
 fn the_pasted_wrapper_cds_back_after_merge_remove() {
-    let repo = TempRepo::init();
-    repo.capture_jj(&["bookmark", "create", "main", "-r", "@"]);
-    repo.describe_working_copy("main workspace");
-    repo.add_workspace("ws1");
-    let ws1_root = repo.path().parent().unwrap().join("ws1");
-    std::fs::write(ws1_root.join("ws1.txt"), "content").unwrap();
-    repo.capture_jj_in(&ws1_root, &["commit", "-m", "feature"]);
-    repo.capture_jj_in(&ws1_root, &["bookmark", "create", "ws1", "-r", "ws1@-"]);
+    // Each iteration owns a fresh repo: the merge forgets the workspace, so
+    // the scenario cannot run twice on one state. `mg` proves the shortcut
+    // follows the same cd path as the spelled-out command.
+    for invocation in ["tt merge --remove", "tt mg --remove"] {
+        let repo = TempRepo::init();
+        repo.capture_jj(&["bookmark", "create", "main", "-r", "@"]);
+        repo.describe_working_copy("main workspace");
+        repo.add_workspace("ws1");
+        let ws1_root = repo.path().parent().unwrap().join("ws1");
+        std::fs::write(ws1_root.join("ws1.txt"), "content").unwrap();
+        repo.capture_jj_in(&ws1_root, &["commit", "-m", "feature"]);
+        repo.capture_jj_in(&ws1_root, &["bookmark", "create", "ws1", "-r", "ws1@-"]);
 
-    let home = tempfile::tempdir().unwrap();
-    let home_path = home.path().to_path_buf();
-    paste_block(&home_path, "bash");
+        let home = tempfile::tempdir().unwrap();
+        let home_path = home.path().to_path_buf();
+        paste_block(&home_path, "bash");
 
-    let output = match run_in_shell(
-        "bash",
-        &format!(
-            "source {:?}; tt merge --remove && pwd",
-            home.path().join(".bashrc")
-        ),
-        &home_path,
-        &repo,
-    ) {
-        Some(output) => output,
-        None => {
-            println!("bash is not installed; skipping this proof");
-            return;
-        }
-    };
+        let output = match run_in_shell(
+            "bash",
+            &format!(
+                "source {:?}; {invocation} && pwd",
+                home.path().join(".bashrc")
+            ),
+            &home_path,
+            &repo,
+        ) {
+            Some(output) => output,
+            None => {
+                println!("bash is not installed; skipping this proof");
+                return;
+            }
+        };
 
-    assert!(
-        output.status.success(),
-        "merge --remove failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let last_line = stdout.lines().last().expect("pwd output");
-    assert_eq!(
-        Path::new(last_line),
-        repo.path(),
-        "must land back on the host root: {stdout:?}"
-    );
+        assert!(
+            output.status.success(),
+            "{invocation} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let last_line = stdout.lines().last().expect("pwd output");
+        assert_eq!(
+            Path::new(last_line),
+            repo.path(),
+            "must land back on the host root: {stdout:?}"
+        );
+    }
 }
 
 /// The switch contract the wrapper relies on: with `--create`, tatami prints
@@ -229,12 +236,22 @@ fn complete_serves_workspace_names_for_the_scripts() {
         vec!["default", "ws2"],
         "switch completes every workspace, sorted"
     );
+    assert_eq!(
+        run_complete("sw").lines().collect::<Vec<_>>(),
+        vec!["default", "ws2"],
+        "the sw shortcut completes like switch"
+    );
 
     // Standing in the host workspace, `remove` must not offer it.
     assert_eq!(
         run_complete("remove").lines().collect::<Vec<_>>(),
         vec!["ws2"],
         "remove excludes the current workspace"
+    );
+    assert_eq!(
+        run_complete("rm").lines().collect::<Vec<_>>(),
+        vec!["ws2"],
+        "the rm shortcut excludes it too"
     );
 }
 
