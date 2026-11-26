@@ -9,19 +9,21 @@ use crate::jj::{Jj, JjError};
 
 /// Candidates for `<target>`: workspaces for `switch` (all) and `remove`
 /// (the current one cannot be removed), bookmarks for `merge`/`rebase`
-/// targets. Sorted for stable, readable completion menus.
+/// targets. Sorted for stable, readable completion menus. Command shortcuts
+/// (`sw`, `rm`, `mg`, `rb`) normalize to their canonical target so the
+/// completion scripts can pass the typed word through unchanged.
 pub fn run(jj: &dyn Jj, target: &str) -> Result<Vec<String>, CompleteError> {
     let mut names = match target {
-        "switch" => crate::cmd::with_stale_recovery(jj, |jj| jj.workspaces())?
+        "switch" | "sw" => crate::cmd::with_stale_recovery(jj, |jj| jj.workspaces())?
             .into_iter()
             .map(|w| w.name)
             .collect(),
-        "remove" => crate::cmd::with_stale_recovery(jj, |jj| jj.workspaces())?
+        "remove" | "rm" => crate::cmd::with_stale_recovery(jj, |jj| jj.workspaces())?
             .into_iter()
             .filter(|w| !w.is_current)
             .map(|w| w.name)
             .collect(),
-        "merge" | "rebase" => jj.bookmark_names()?,
+        "merge" | "mg" | "rebase" | "rb" => jj.bookmark_names()?,
         _ => Vec::new(),
     };
     names.sort();
@@ -169,5 +171,17 @@ mod complete_should {
     fn unknown_targets_offer_nothing() {
         let jj = FakeJj::new(vec![], vec![]);
         assert!(run(&jj, "list").unwrap().is_empty());
+    }
+
+    #[test]
+    fn shortcuts_complete_like_their_canonical_target() {
+        let jj = FakeJj::new(
+            vec![ws("zeta", false), ws("default", true), ws("alpha", false)],
+            vec!["zeta".to_string(), "main".into(), "alpha".into()],
+        );
+        assert_eq!(run(&jj, "sw").unwrap(), vec!["alpha", "default", "zeta"]);
+        assert_eq!(run(&jj, "rm").unwrap(), vec!["alpha", "zeta"]);
+        assert_eq!(run(&jj, "mg").unwrap(), vec!["alpha", "main", "zeta"]);
+        assert_eq!(run(&jj, "rb").unwrap(), vec!["alpha", "main", "zeta"]);
     }
 }

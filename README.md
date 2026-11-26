@@ -16,6 +16,10 @@ tt remove login            # oublie + met à la poubelle + supprime le bookmark 
                            # (--keep-bookmark pour le conserver)
 ```
 
+Raccourcis : `tt ls` = `list`, `tt sw` = `switch`, `tt mg` = `merge`,
+`tt rb` = `rebase`, `tt rm` = `remove` — visibles dans `--help`. Un alias
+config homonyme perd toujours : la vraie sous-commande gagne.
+
 ## Installation
 
 Prérequis : [jj](https://jj-vcs.dev) et une toolchain Rust récente. Les
@@ -48,15 +52,19 @@ Ajoutez le bloc affiché à votre rc — ou une seule ligne :
 eval "$(tatami config shell init zsh)"
 ```
 
-Le wrapper `tt` intercepte `switch` et `merge` (les deux impriment le chemin de
-destination ; le wrapper fait le `cd`) et passe tout le reste au binaire. Sans
-wrapper, `tt switch` imprime le chemin sans déplacer personne. En zsh, placez
-le bloc après `compinit` pour que les complétions s'enregistrent.
+Le wrapper `tt` intercepte `switch`/`sw` et `merge`/`mg` (les deux impriment le
+chemin de destination ; le wrapper fait le `cd`) et passe tout le reste au
+binaire. Sans wrapper, `tt switch` imprime le chemin sans déplacer personne. En
+zsh, placez le bloc après `compinit` pour que les complétions s'enregistrent.
+Un bloc collé avant cette version n'intercepte pas encore `sw`/`mg` :
+réimprimez-le (`tatami config shell init`) et remplacez l'ancien entre ses
+marqueurs.
 
-Complétion **dynamique** : `switch`/`remove` complètent les noms de workspaces,
-`merge`/`rebase` les bookmarks — les scripts appellent la commande cachée
-`tatami __complete <cible>` à chaque tabulation (workspaces pour `remove`
-excluant le courant). Enregistrée pour `tatami` **et** le wrapper `tt`.
+Complétion **dynamique** : `switch`/`remove` (et `sw`/`rm`) complètent les noms
+de workspaces, `merge`/`rebase` (et `mg`/`rb`) les bookmarks — les scripts
+appellent la commande cachée `tatami __complete <cible>` à chaque tabulation
+(workspaces pour `remove` excluant le courant). Enregistrée pour `tatami` **et**
+le wrapper `tt`.
 
 Sur macOS, `zsh -i -c` ne source pas `~/.zshrc` : tester dans un terminal
 interactif, pas via `-c`.
