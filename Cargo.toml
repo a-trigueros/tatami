@@ -1,6 +1,6 @@
 [package]
 name = "tatami"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Worktrunk-style workspace manager for the jujutsu (jj) VCS"
 license = "MIT"
