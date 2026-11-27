@@ -209,6 +209,52 @@ fn removes_a_workspace_whose_name_contains_a_slash() {
 }
 
 #[test]
+fn removes_a_workspace_whose_working_copy_commit_is_shared_history() {
+    // Reported: `tt rm feat/my-impl` failed with "Commit … is immutable"
+    // once the branch had been merged on the forge. A described `@` that
+    // `tt merge` fast-forwarded `main` onto is reachable from `main@origin`
+    // (jj's `trunk()`): shared history, which jj refuses to rewrite.
+    let repo = TempRepo::init();
+    repo.add_workspace("ws2");
+    let ws2_root = repo.path().parent().unwrap().join("ws2");
+    std::fs::write(ws2_root.join("ws2.txt"), "content").unwrap();
+    repo.capture_jj_in(&ws2_root, &["describe", "-m", "ws2: did some stuff"]);
+    // Merged: `main` sits on the workspace's working-copy commit, published.
+    repo.capture_jj(&["bookmark", "create", "main", "-r", "ws2@"]);
+    repo.publish("main");
+
+    let jj = CliJj::at(repo.path().clone());
+    // The arrangement, checked through the adapter the removal runs with:
+    // jj itself must see the working-copy commit as immutable.
+    assert_eq!(
+        jj.revset_count("ws2@ & immutable()").unwrap(),
+        1,
+        "ws2@ must be immutable for this test to prove anything"
+    );
+
+    let state_dir = tempfile::tempdir().unwrap();
+    let hooks = Hooks::none();
+    remove::run(
+        &jj,
+        remove_args("ws2", true, &state_dir.path().join(".jj/tatami"), &hooks),
+        &mut Vec::new(),
+        &mut NoGate,
+    )
+    .expect("a merged workspace is removable");
+
+    let names: Vec<_> = jj
+        .workspaces()
+        .unwrap()
+        .into_iter()
+        .map(|w| w.name)
+        .collect();
+    assert!(!names.contains(&"ws2".to_string()), "workspaces: {names:?}");
+    // The commit is history now: still there, `main` still on it.
+    let at_main = repo.capture_jj(&["log", "-r", "main", "--no-graph", "-T", "description"]);
+    assert_eq!(at_main, "ws2: did some stuff");
+}
+
+#[test]
 fn an_unapproved_project_pre_remove_hook_aborts_the_removal() {
     let repo = TempRepo::init();
     repo.add_workspace("ws2");

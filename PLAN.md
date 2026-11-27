@@ -154,8 +154,14 @@ Chaque jalon livrera un binaire utilisable.
 
 - **forget n'abandonne pas le `@`** (0.47.1, vérifié) : après
   `jj workspace forget`, la working-copy commit du workspace supprimé reste
-  visible comme change vide — tatami fait `jj abandon "<nom>@"` avant le
-  forget (le revset à slash, ex. `feat/test@`, se résout tel quel).
+  visible comme change vide — tatami fait `jj abandon "<nom>@ ~ immutable()"`
+  avant le forget (le revset à slash, ex. `feat/test@`, se résout tel quel).
+- **un `@` fusionné puis poussé est immutable** (0.47.1, vérifié ; remonté par
+  un utilisateur) : dès que `main@origin` l'atteint (`trunk()` ⇒
+  `immutable_heads()` par défaut), `jj abandon "<nom>@"` échoue (exit 1,
+  `Commit … is immutable`). Tatami n'abandonne que la partie mutable : jj
+  accepte un revset vide (`No revisions to abandon.`, exit 0) et le forget
+  passe sur un `@` immutable. Couvre `remove`, `merge --remove` et `prune`.
 - **abandon supprime les bookmarks exactement posés sur le commit abandonné**
   (« Deleted bookmarks », 0.47.1) : pour un workspace fraîchement créé, le
   bookmark homonyme peut donc disparaître dès l'abandon — le booléen de

@@ -205,7 +205,12 @@ pub(crate) fn forget_and_trash(
     // Abandon the working-copy commit FIRST (the revset needs the workspace
     // to still exist): `jj workspace forget` does not abandon it (pinned
     // 0.47.1), leaving an empty `(no description set)` change forever.
-    jj.abandon(&format!("{name}@"))?;
+    // Shared history is left alone: once merged and published, `@` is
+    // reachable from `trunk()` (`main@origin`), hence immutable, and jj
+    // refuses to rewrite it. An ancestor of an immutable commit is immutable
+    // too, so the mutable part never has immutable descendants; an empty
+    // match is a no-op (both pinned 0.47.1).
+    jj.abandon(&format!("{name}@ ~ immutable()"))?;
     jj.workspace_forget(name)?;
     match root {
         Some(root) if root.exists() => Ok(DirectoryOutcome::Trashed(trash(
@@ -387,6 +392,26 @@ mod remove_should {
             "contents preserved in trash"
         );
         assert!(!ws2_root.exists(), "origin directory must be gone");
+    }
+
+    #[test]
+    fn abandons_only_the_mutable_part_of_the_working_copy() {
+        // Fast-tier twin of the proof `removes_a_workspace_whose_working_
+        // copy_commit_is_shared_history`: the revset sent to jj is the
+        // contract — a merged workspace's `@` is immutable history.
+        let parent = tempfile::tempdir().unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+        let jj = FakeJj::with_workspaces(vec![
+            ws("default", true, Some(parent.path().join("main"))),
+            ws("ws2", false, None),
+        ]);
+
+        remove_from(&jj, "ws2", false, state_dir.path()).expect("remove ws2");
+
+        assert_eq!(
+            *jj.abandon_calls.borrow(),
+            vec!["ws2@ ~ immutable()".to_string()]
+        );
     }
 
     #[test]

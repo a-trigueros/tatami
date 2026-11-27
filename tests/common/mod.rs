@@ -121,4 +121,26 @@ impl TempRepo {
         let path_str = path.to_str().expect("utf-8 temp path");
         self.run_jj(&["workspace", "add", path_str]);
     }
+
+    /// Publishes `bookmark` to a throwaway `origin` (needs the `git` binary).
+    /// The push records `<bookmark>@origin` — the remote bookmark a forge
+    /// merge followed by a fetch leaves behind — so everything reachable from
+    /// `main@origin` becomes immutable under jj's default `immutable_heads()`
+    /// (`trunk()`).
+    pub fn publish(&self, bookmark: &str) {
+        let origin = self.dir.path().join("origin.git");
+        let output = Command::new("git")
+            .args(["init", "--bare", "--quiet"])
+            .arg(&origin)
+            .output()
+            .expect("git binary must be installed and on PATH");
+        assert!(
+            output.status.success(),
+            "git init --bare failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let origin = origin.to_str().expect("utf-8 temp path");
+        self.run_jj(&["git", "remote", "add", "origin", origin]);
+        self.run_jj(&["git", "push", "--bookmark", bookmark]);
+    }
 }
